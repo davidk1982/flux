@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\ViewHelpers\Field;
 
 /*
@@ -19,12 +20,7 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
  */
 class InputViewHelper extends AbstractFieldViewHelper
 {
-
-    /**
-     * Initialize
-     * @return void
-     */
-    public function initializeArguments()
+    public function initializeArguments(): void
     {
         parent::initializeArguments();
         $this->registerArgument(
@@ -45,15 +41,11 @@ class InputViewHelper extends AbstractFieldViewHelper
         );
     }
 
-    /**
-     * @param RenderingContextInterface $renderingContext
-     * @param iterable $arguments
-     * @return Input
-     */
-    public static function getComponent(RenderingContextInterface $renderingContext, iterable $arguments)
+    public static function getComponent(RenderingContextInterface $renderingContext, iterable $arguments): Input
     {
+        /** @var array $arguments */
         /** @var Input $input */
-        $input = static::getPreparedComponent('Input', $renderingContext, $arguments);
+        $input = static::getPreparedComponent(Input::class, $renderingContext, $arguments);
         $input->setValidate($arguments['eval']);
         $input->setMaxCharacters($arguments['maxCharacters']);
         $input->setMinimum($arguments['minimum']);

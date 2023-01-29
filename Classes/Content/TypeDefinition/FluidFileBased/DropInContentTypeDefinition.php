@@ -33,10 +33,10 @@ class DropInContentTypeDefinition extends FluidFileBasedContentTypeDefinition
     public const CONTENT_DIRECTORY = 'Content/';
     public const PAGE_DIRECTORY = 'Page/';
 
-    protected $extensionIdentity = 'FluidTYPO3.Flux';
-    protected $basePath = 'design/';
-    protected $relativeFilePath = '';
-    protected $providerClassName = Provider::class;
+    protected string $extensionIdentity = 'FluidTYPO3.Flux';
+    protected string $basePath = 'design/';
+    protected string $relativeFilePath = '';
+    protected string $providerClassName = Provider::class;
 
     /**
      * Constructs a Fluid file-based content type definition
@@ -49,7 +49,7 @@ class DropInContentTypeDefinition extends FluidFileBasedContentTypeDefinition
      * @param string $extensionIdentity The VendorName.ExtensionName identity of the extension that contains the file
      * @param string $basePath Absolute path, or EXT:... path to location of template file
      * @param string $relativeFilePath Path of file relative to $basePath, without leading slash
-     * @param string $providerClassName Class name of a Flux ProviderInterface implementation that handles the content type
+     * @param string $providerClassName Class name of a Flux ProviderInterface implementation that handles the CType
      */
     public function __construct(
         string $extensionIdentity,
@@ -58,11 +58,14 @@ class DropInContentTypeDefinition extends FluidFileBasedContentTypeDefinition
         string $providerClassName = Provider::class
     ) {
         $this->extensionIdentity = $extensionIdentity;
-        $this->basePath = substr($basePath, 0, 1) !== '/' ? GeneralUtility::getFileAbsFileName($basePath) : $basePath;
+        $this->basePath = static::determineAbsolutePathForFilename($basePath);
         $this->relativeFilePath = $relativeFilePath;
         $this->providerClassName = $providerClassName;
     }
 
+    /**
+     * @return iterable|DropInContentTypeDefinition[]
+     */
     public static function fetchContentTypes(): iterable
     {
         if (!ExtensionConfigurationUtility::getOption(ExtensionConfigurationUtility::OPTION_PLUG_AND_PLAY)) {
@@ -73,14 +76,21 @@ class DropInContentTypeDefinition extends FluidFileBasedContentTypeDefinition
         // Steps:
         // 1) auto-create if missing, the required file structure and dummy files
         // 2) iterate all content types found in the file structure
-        $basePath = trim(ExtensionConfigurationUtility::getOption(ExtensionConfigurationUtility::OPTION_PLUG_AND_PLAY_DIRECTORY), '/.') . '/';
-        $basePath = realpath(GeneralUtility::getFileAbsFileName($basePath)) . '/';
+        $plugAndPlayDirectory = ExtensionConfigurationUtility::getOption(
+            ExtensionConfigurationUtility::OPTION_PLUG_AND_PLAY_DIRECTORY
+        );
+        if (!is_scalar($plugAndPlayDirectory)) {
+            return [];
+        }
+        $basePath = trim((string) $plugAndPlayDirectory, '/.');
+        $basePath = static::determineAbsolutePathForFilename($basePath) . '/';
         static::initializeDropInFileSystemStructure($basePath);
 
-        $contentTypesPath = realpath($basePath . static::TEMPLATES_DIRECTORY . static::CONTENT_DIRECTORY) . '/';
+        $contentTypesPath = $basePath . static::TEMPLATES_DIRECTORY . static::CONTENT_DIRECTORY;
+        /** @var Finder $finder */
         $finder = GeneralUtility::makeInstance(Finder::class);
-        /** @var \SplFileInfo[] $files */
         try {
+            /** @var \SplFileInfo[] $files */
             $files = $finder->in($contentTypesPath)->name(static::TEMPLATES_PATTERN)->sortByName();
         } catch (DirectoryNotFoundException $exception) {
             return [];
@@ -88,13 +98,15 @@ class DropInContentTypeDefinition extends FluidFileBasedContentTypeDefinition
         $types = [];
         $basePathLength = strlen($contentTypesPath);
         foreach ($files as $file) {
-            $templateFile = $file->getRealPath();
+            $templateFile = $file->getPath() . '/' . $file->getFilename();
             // May cause some files to be ignored if the files are either symlinked or the base path was not possible
             // to resolve correctly. This can happen if for some reason, ENV is configured with a public path that is
             // not within the project path, is is configured as an absolute path (which technically isn't correct).
             // We ignore this case instead of throwing an exception - essentially disabling drop-in templates on systems
             // which contain an unexpected public path.
-            if (strlen($templateFile) > $basePathLength && substr_compare($basePath, $templateFile, 0, $basePathLength)) {
+            if (strlen($templateFile) > $basePathLength
+                && substr_compare($basePath, $templateFile, 0, $basePathLength)
+            ) {
                 $relativeTemplatePath = substr($templateFile, $basePathLength);
                 $contentType = new DropInContentTypeDefinition(
                     'FluidTYPO3.Flux',
@@ -119,7 +131,7 @@ class DropInContentTypeDefinition extends FluidFileBasedContentTypeDefinition
 
     protected static function initializeDropInFileSystemStructure(string $basePath): void
     {
-        if (!is_dir($basePath)) {
+        if (!file_exists($basePath)) {
             static::createDir($basePath . static::PARTIALS_DIRECTORY);
             static::createDir(
                 $basePath . static::LAYOUTS_DIRECTORY,
@@ -145,5 +157,13 @@ class DropInContentTypeDefinition extends FluidFileBasedContentTypeDefinition
                 $directory . pathinfo($sourceFile, PATHINFO_BASENAME)
             );
         }
+    }
+
+    protected static function determineAbsolutePathForFilename(string $filename): string
+    {
+        if (strpos($filename, '://') !== false) {
+            return $filename;
+        }
+        return realpath($filename) ?: $filename;
     }
 }

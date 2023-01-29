@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\ViewHelpers\Field;
 
 /*
@@ -19,12 +20,7 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
  */
 class TreeViewHelper extends AbstractRelationFieldViewHelper
 {
-
-    /**
-     * Initialize
-     * @return void
-     */
-    public function initializeArguments()
+    public function initializeArguments(): void
     {
         parent::initializeArguments();
         $this->registerArgument('parentField', 'string', 'Field containing UID of parent record', true);
@@ -67,15 +63,11 @@ class TreeViewHelper extends AbstractRelationFieldViewHelper
         $this->registerArgument('width', 'integer', 'Width of TreeView component', false, Tree::DEFAULT_WIDTH);
     }
 
-    /**
-     * @param RenderingContextInterface $renderingContext
-     * @param iterable $arguments
-     * @return Tree
-     */
-    public static function getComponent(RenderingContextInterface $renderingContext, iterable $arguments)
+    public static function getComponent(RenderingContextInterface $renderingContext, iterable $arguments): Tree
     {
+        /** @var array $arguments */
         /** @var Tree $tree */
-        $tree = static::getPreparedComponent('Tree', $renderingContext, $arguments);
+        $tree = static::getPreparedComponent(Tree::class, $renderingContext, $arguments);
         $tree->setParentField($arguments['parentField']);
         $tree->setAllowRecursiveMode($arguments['allowRecursiveMode']);
         $tree->setExpandAll($arguments['expandAll']);

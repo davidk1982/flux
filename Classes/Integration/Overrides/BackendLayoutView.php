@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\Integration\Overrides;
 
 /*
@@ -13,28 +14,19 @@ use FluidTYPO3\Flux\Service\FluxService;
 use FluidTYPO3\Flux\Utility\ColumnNumberUtility;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Extbase\Object\ObjectManager;
 
 class BackendLayoutView extends \TYPO3\CMS\Backend\View\BackendLayoutView
 {
-    /**
-     * @var GridProviderInterface
-     */
-    protected $provider;
+    protected ?GridProviderInterface $provider = null;
+    protected array $record = [];
+    protected bool $addingItemsForContent = false;
 
-    /**
-     * @var array
-     */
-    protected $record;
-
-    protected $addingItemsForContent = false;
-
-    public function setProvider(GridProviderInterface $provider)
+    public function setProvider(GridProviderInterface $provider): void
     {
         $this->provider = $provider;
     }
 
-    public function setRecord(array $record)
+    public function setRecord(array $record): void
     {
         $this->record = $record;
     }
@@ -43,10 +35,8 @@ class BackendLayoutView extends \TYPO3\CMS\Backend\View\BackendLayoutView
      * Gets colPos items to be shown in the forms engine.
      * This method is called as "itemsProcFunc" with the accordant context
      * for tt_content.colPos.
-     *
-     * @param array $parameters
      */
-    public function colPosListItemProcFunc(array $parameters)
+    public function colPosListItemProcFunc(array $parameters): void
     {
         $this->record = $parameters['row'];
         $this->addingItemsForContent = true;
@@ -54,13 +44,19 @@ class BackendLayoutView extends \TYPO3\CMS\Backend\View\BackendLayoutView
         $this->addingItemsForContent = false;
     }
 
-    public function getSelectedBackendLayout($pageId)
+    /**
+     * @param int $pageId
+     */
+    public function getSelectedBackendLayout($pageId): ?array
     {
         if ($this->addingItemsForContent) {
             $identifier = $this->getSelectedCombinedIdentifier($pageId);
+            if ($identifier === false) {
+                return null;
+            }
 
             // Early return parent method's output if selected identifier is not from Flux
-            if (substr($identifier, 0, 6) !== 'flux__') {
+            if (substr((string) $identifier, 0, 6) !== 'flux__') {
                 return parent::getSelectedBackendLayout($pageId);
             }
             $pageRecord = $this->loadRecordFromTable('pages', (int)$pageId);
@@ -85,9 +81,6 @@ class BackendLayoutView extends \TYPO3\CMS\Backend\View\BackendLayoutView
     /**
      * Extracts the UID to use as parent UID, based on properties of the record
      * and composition of the values within it, to ensure an integer UID.
-     *
-     * @param array $record
-     * @return int
      */
     protected function resolveParentRecordUid(array $record): int
     {
@@ -113,16 +106,15 @@ class BackendLayoutView extends \TYPO3\CMS\Backend\View\BackendLayoutView
      *
      * @param int $pageId
      * @param array $items
-     * @return array
      */
-    protected function addColPosListLayoutItems($pageId, $items)
+    protected function addColPosListLayoutItems($pageId, $items): array
     {
         $layout = $this->getSelectedBackendLayout($pageId);
-        if ($layout && $layout['__items']) {
+        if (isset($layout, $layout['__items'])) {
             $items = $layout['__items'];
         }
         if ($this->addingItemsForContent) {
-            $parentRecordUid = ColumnNumberUtility::calculateParentUid($this->record['colPos']);
+            $parentRecordUid = ColumnNumberUtility::calculateParentUid((integer) $this->record['colPos']);
             if ($parentRecordUid > 0) {
                 $parentRecord = $this->loadRecordFromTable('tt_content', $parentRecordUid);
                 if (!$parentRecord) {
@@ -130,13 +122,14 @@ class BackendLayoutView extends \TYPO3\CMS\Backend\View\BackendLayoutView
                 }
                 $provider = $this->resolvePrimaryProviderForRecord('tt_content', $parentRecord);
                 if ($provider) {
+                    $label = $this->getLanguageService()->sL(
+                        'LLL:EXT:flux/Resources/Private/Language/locallang.xlf:flux.backendLayout.columnsInParent'
+                    );
                     $items = array_merge(
                         $items,
                         [
                             [
-                                $this->getLanguageService()->sL(
-                                    'LLL:EXT:flux/Resources/Private/Language/locallang.xlf:flux.backendLayout.columnsInParent'
-                                ),
+                                $label,
                                 '--div--'
                             ]
                         ],
@@ -149,24 +142,32 @@ class BackendLayoutView extends \TYPO3\CMS\Backend\View\BackendLayoutView
     }
 
     /**
-     * @param string $table
-     * @param int $uid
-     * @return array|null
+     * @codeCoverageIgnore
      */
-    protected function loadRecordFromTable(string $table, int $uid)
+    protected function loadRecordFromTable(string $table, int $uid): ?array
     {
-        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
+        /** @var ConnectionPool $connectionPool */
+        $connectionPool = GeneralUtility::makeInstance(ConnectionPool::class);
+        $queryBuilder = $connectionPool->getQueryBuilderForTable($table);
         $query = $queryBuilder->select('*')
             ->from($table)
             ->where($queryBuilder->expr()->eq('uid', $uid));
         $query->getRestrictions()->removeAll();
-        return $query->execute()->fetchAll()[0] ?? null;
+        /** @var array[] $results */
+        $results = $query->execute()->fetchAll();
+        return $results[0] ?? null;
     }
 
-    protected function resolvePrimaryProviderForRecord(string $table, array $record)
+    protected function resolvePrimaryProviderForRecord(string $table, array $record): ?GridProviderInterface
     {
-        return GeneralUtility::makeInstance(ObjectManager::class)
-            ->get(FluxService::class)
-            ->resolvePrimaryConfigurationProvider($table, null, $record, null, GridProviderInterface::class);
+        /** @var FluxService $fluxService */
+        $fluxService = GeneralUtility::makeInstance(FluxService::class);
+        return $fluxService->resolvePrimaryConfigurationProvider(
+            $table,
+            null,
+            $record,
+            null,
+            [GridProviderInterface::class]
+        );
     }
 }

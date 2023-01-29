@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\Service;
 
 /*
@@ -18,16 +19,18 @@ use FluidTYPO3\Flux\Provider\ProviderInterface;
 use FluidTYPO3\Flux\Provider\ProviderResolver;
 use FluidTYPO3\Flux\Utility\ExtensionConfigurationUtility;
 use FluidTYPO3\Flux\Utility\ExtensionNamingUtility;
+use Psr\Log\LoggerInterface;
 use TYPO3\CMS\Core\Cache\CacheManager;
 use TYPO3\CMS\Core\Cache\Exception\NoSuchCacheException;
-use TYPO3\CMS\Core\Cache\Frontend\VariableFrontend;
+use TYPO3\CMS\Core\Cache\Frontend\FrontendInterface;
 use TYPO3\CMS\Core\Log\LogManager;
+use TYPO3\CMS\Core\Resource\File;
 use TYPO3\CMS\Core\Resource\ResourceFactory;
 use TYPO3\CMS\Core\Service\FlexFormService;
 use TYPO3\CMS\Core\SingletonInterface;
+use TYPO3\CMS\Core\TypoScript\TemplateService;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Extbase\Configuration\ConfigurationManagerInterface;
-use TYPO3\CMS\Extbase\Object\ObjectManagerInterface;
+use TYPO3\CMS\Core\Utility\RootlineUtility;
 use TYPO3\CMS\Extbase\Reflection\ObjectAccess;
 use TYPO3\CMS\Fluid\View\TemplatePaths;
 
@@ -38,92 +41,27 @@ use TYPO3\CMS\Fluid\View\TemplatePaths;
  */
 class FluxService implements SingletonInterface
 {
-    /**
-     * @var ConfigurationManagerInterface
-     */
-    protected $configurationManager;
+    protected WorkspacesAwareRecordService $recordService;
+    protected ResourceFactory $resourceFactory;
 
-    /**
-     * @var ObjectManagerInterface
-     */
-    protected $objectManager;
-
-    /**
-     * @var ProviderResolver
-     */
-    protected $providerResolver;
-
-    /**
-     * @var WorkspacesAwareRecordService
-     */
-    protected $recordService;
-
-    /**
-     * @var ResourceFactory
-     */
-    protected $resourceFactory;
-
-    /**
-     * @param ConfigurationManagerInterface $configurationManager
-     * @return void
-     */
-    public function injectConfigurationManager(ConfigurationManagerInterface $configurationManager)
+    public function __construct()
     {
-        $this->configurationManager = $configurationManager;
-    }
-
-    /**
-     * @param ObjectManagerInterface $objectManager
-     * @return void
-     */
-    public function injectObjectManager(ObjectManagerInterface $objectManager)
-    {
-        $this->objectManager = $objectManager;
-    }
-
-    /**
-     * @param ProviderResolver $providerResolver
-     * @return void
-     */
-    public function injectProviderResolver(ProviderResolver $providerResolver)
-    {
-        $this->providerResolver = $providerResolver;
-    }
-
-    /**
-     * @param WorkspacesAwareRecordService $recordService
-     * @return void
-     */
-    public function injectRecordService(WorkspacesAwareRecordService $recordService)
-    {
+        /** @var WorkspacesAwareRecordService $recordService */
+        $recordService = GeneralUtility::makeInstance(WorkspacesAwareRecordService::class);
         $this->recordService = $recordService;
-    }
 
-    /**
-     * @param ResourceFactory $resourceFactory
-     * @return void
-     */
-    public function injectResourceFactory(ResourceFactory $resourceFactory)
-    {
+        /** @var ResourceFactory $resourceFactory */
+        $resourceFactory = GeneralUtility::makeInstance(ResourceFactory::class);
         $this->resourceFactory = $resourceFactory;
     }
 
-    /**
-     * @param array $objects
-     * @param string $sortBy
-     * @param string $sortDirection
-     * @return array
-     */
-    public function sortObjectsByProperty(array $objects, $sortBy, $sortDirection = 'ASC')
+    public function sortObjectsByProperty(array $objects, string $sortBy, string $sortDirection = 'ASC'): array
     {
         $ascending = 'ASC' === strtoupper($sortDirection);
         uasort($objects, function ($a, $b) use ($sortBy, $ascending) {
             $a = ObjectAccess::getPropertyPath($a, $sortBy);
             $b = ObjectAccess::getPropertyPath($b, $sortBy);
-            if ($a === $b) {
-                return 0;
-            }
-            return $a < $b ? ($ascending ? -1 : 1) : ($ascending ? 1 : -1);
+            return $ascending ? $a <=> $b : $b <=> $a;
         });
         return $objects;
     }
@@ -131,11 +69,8 @@ class FluxService implements SingletonInterface
     /**
      * Returns the plugin.tx_extsignature.settings array.
      * Accepts any input extension name type.
-     *
-     * @param string $extensionName
-     * @return array
      */
-    public function getSettingsForExtensionName($extensionName)
+    public function getSettingsForExtensionName(string $extensionName): array
     {
         $signature = ExtensionNamingUtility::getExtensionSignature($extensionName);
         return (array) $this->getTypoScriptByPath('plugin.tx_' . $signature . '.settings');
@@ -145,14 +80,27 @@ class FluxService implements SingletonInterface
      * Gets the value/array from global TypoScript by
      * dotted path expression.
      *
-     * @param string $path
-     * @return array
+     * @return array|mixed
      */
-    public function getTypoScriptByPath($path)
+    public function getTypoScriptByPath(string $path)
     {
-        $all = (array) $this->configurationManager->getConfiguration(
-            ConfigurationManagerInterface::CONFIGURATION_TYPE_FULL_TYPOSCRIPT
-        );
+        $cache = $this->getRuntimeCache();
+        $cacheId = md5($path);
+        $fromCache = $cache->get($cacheId);
+        if ($fromCache) {
+            return $fromCache;
+        }
+        $pageId = (integer) ($GLOBALS['TSFE']->id ?? 0);
+        if ($pageId === 0) {
+            return [];
+        }
+        /** @var RootlineUtility $rootLineUtility */
+        $rootLineUtility = GeneralUtility::makeInstance(RootlineUtility::class, $pageId);
+        $rootLine = $rootLineUtility->get();
+        /** @var TemplateService $templateService */
+        $templateService = GeneralUtility::makeInstance(TemplateService::class);
+        $templateService->start($rootLine);
+        $all = $templateService->setup;
         $value = &$all;
         foreach (explode('.', $path) as $segment) {
             $value = ($value[$segment . '.'] ?? $value[$segment] ?? null);
@@ -161,46 +109,30 @@ class FluxService implements SingletonInterface
             }
         }
         if (is_array($value)) {
-            return GeneralUtility::removeDotsFromTS($value);
+            $value = GeneralUtility::removeDotsFromTS($value);
         }
+        $cache->set($cacheId, $value);
         return $value;
-    }
-
-    /**
-     * Returns the complete, global TypoScript array
-     * defined in TYPO3.
-     *
-     * @deprecated DO NOT USE THIS METHOD! It will hinder performance - and the method will be removed later.
-     * @return array
-     */
-    public function getAllTypoScript()
-    {
-        return GeneralUtility::removeDotsFromTS(
-            (array) $this->configurationManager->getConfiguration(
-                ConfigurationManagerInterface::CONFIGURATION_TYPE_FULL_TYPOSCRIPT
-            )
-        );
     }
 
     /**
      * ResolveUtility the top-priority ConfigurationPrivider which can provide
      * a working FlexForm configuration baed on the given parameters.
      *
-     * @param string $table
-     * @param string $fieldName
-     * @param array $row
-     * @param string $extensionKey
-     * @param string|array $interfaces
-     * @return ProviderInterface|NULL
+     * @template T
+     * @param class-string<T>[] $interfaces
+     * @return T|null
      */
     public function resolvePrimaryConfigurationProvider(
-        $table,
-        $fieldName,
+        ?string $table,
+        ?string $fieldName,
         array $row = null,
-        $extensionKey = null,
-        $interfaces = ProviderInterface::class
+        ?string $extensionKey = null,
+        array $interfaces = [ProviderInterface::class]
     ) {
-        return $this->providerResolver->resolvePrimaryConfigurationProvider(
+        /** @var ProviderResolver $providerResolver */
+        $providerResolver = GeneralUtility::makeInstance(ProviderResolver::class);
+        return $providerResolver->resolvePrimaryConfigurationProvider(
             $table,
             $fieldName,
             $row,
@@ -213,21 +145,20 @@ class FluxService implements SingletonInterface
      * Resolves a ConfigurationProvider which can provide a working FlexForm
      * configuration based on the given parameters.
      *
-     * @param string $table
-     * @param string $fieldName
-     * @param array $row
-     * @param string $extensionKey
-     * @param string|array $interfaces
-     * @return ProviderInterface[]
+     * @template T
+     * @param class-string<T>[] $interfaces
+     * @return T[]
      */
     public function resolveConfigurationProviders(
-        $table,
-        $fieldName,
+        ?string $table,
+        ?string $fieldName,
         array $row = null,
-        $extensionKey = null,
-        $interfaces = ProviderInterface::class
-    ) {
-        return $this->providerResolver->resolveConfigurationProviders(
+        ?string $extensionKey = null,
+        array $interfaces = [ProviderInterface::class]
+    ): array {
+        /** @var ProviderResolver $providerResolver */
+        $providerResolver = GeneralUtility::makeInstance(ProviderResolver::class);
+        return $providerResolver->resolveConfigurationProviders(
             $table,
             $fieldName,
             $row,
@@ -236,10 +167,7 @@ class FluxService implements SingletonInterface
         );
     }
 
-    /**
-     * @return Resolver
-     */
-    public function getResolver()
+    public function getResolver(): Resolver
     {
         return new Resolver();
     }
@@ -254,16 +182,15 @@ class FluxService implements SingletonInterface
      * @param string $flexFormContent flexForm xml string
      * @param Form $form An instance of \FluidTYPO3\Flux\Form. If transformation instructions are contained in this
      *                   configuration they are applied after conversion to array
-     * @param string $languagePointer language pointer used in the flexForm
-     * @param string $valuePointer value pointer used in the flexForm
-     * @return array the processed array
+     * @param string|null $languagePointer language pointer used in the flexForm
+     * @param string|null $valuePointer value pointer used in the flexForm
      */
     public function convertFlexFormContentToArray(
-        $flexFormContent,
+        string $flexFormContent,
         Form $form = null,
-        $languagePointer = 'lDEF',
-        $valuePointer = 'vDEF'
-    ) {
+        ?string $languagePointer = 'lDEF',
+        ?string $valuePointer = 'vDEF'
+    ): array {
         if (true === empty($flexFormContent)) {
             return [];
         }
@@ -273,38 +200,21 @@ class FluxService implements SingletonInterface
         if (true === empty($valuePointer)) {
             $valuePointer = 'vDEF';
         }
-        $serviceClassName = class_exists(FlexFormService::class) ? FlexFormService::class : \TYPO3\CMS\Extbase\Service\FlexFormService::class;
-        $settings = $this->objectManager->get($serviceClassName)
-            ->convertFlexFormContentToArray($flexFormContent, $languagePointer, $valuePointer);
+        $flexFormService = $this->getFlexFormService();
+        $settings = $flexFormService->convertFlexFormContentToArray($flexFormContent, $languagePointer, $valuePointer);
         if (null !== $form && $form->getOption(Form::OPTION_TRANSFORM)) {
-            /** @var FormDataTransformer $transformer */
-            $transformer = $this->objectManager->get(FormDataTransformer::class);
+            $transformer = $this->getFormDataTransformer();
             $settings = $transformer->transformAccordingToConfiguration($settings, $form);
         }
         return $settings;
     }
 
     /**
-     * Returns the plugin.tx_extsignature.view array,
-     * or a default set of paths if that array is not
-     * defined in TypoScript.
-     *
-     * @deprecated See TemplatePaths object
-     * @param string $extensionName
-     * @return array|NULL
-     */
-    public function getViewConfigurationForExtensionName($extensionName)
-    {
-        return GeneralUtility::makeInstance(TemplatePaths::class, ExtensionNamingUtility::getExtensionKey($extensionName))->toArray();
-    }
-
-    /**
      * @param mixed $value
-     * @param boolean $persistent
-     * @param array ...$identifyingValues
+     * @param array $identifyingValues
      * @return void
      */
-    public function setInCaches($value, $persistent, ...$identifyingValues)
+    public function setInCaches($value, bool $persistent, ...$identifyingValues)
     {
         $cacheKey = $this->createCacheIdFromValues($identifyingValues);
         $this->getRuntimeCache()->set($cacheKey, $value);
@@ -314,7 +224,7 @@ class FluxService implements SingletonInterface
     }
 
     /**
-     * @param array ...$identifyingValues
+     * @param array $identifyingValues
      * @return mixed|false
      */
     public function getFromCaches(...$identifyingValues)
@@ -323,48 +233,37 @@ class FluxService implements SingletonInterface
         return $this->getRuntimeCache()->get($cacheKey) ?: $this->getPersistentCache()->get($cacheKey);
     }
 
-    /**
-     * @param string $reference
-     * @return string
-     */
-    public function convertFileReferenceToTemplatePathAndFilename($reference)
+    public function convertFileReferenceToTemplatePathAndFilename(string $reference): string
     {
-        $filename = array_pop(explode(':', $reference));
+        $parts = explode(':', $reference);
+        $filename = array_pop($parts);
         if (true === ctype_digit($filename)) {
-            return $this->resourceFactory->getFileObjectFromCombinedIdentifier($reference);
+            /** @var File $file */
+            $file = $this->resourceFactory->getFileObjectFromCombinedIdentifier($reference);
+            return $file->getIdentifier();
         }
-        $reference = GeneralUtility::getFileAbsFileName($reference);
+        $reference = $this->resolveAbsolutePathForFilename($reference);
         return $reference;
     }
 
-    /**
-     * @param string $reference
-     * @return array
-     */
-    public function getViewConfigurationByFileReference($reference)
+    public function getViewConfigurationByFileReference(string $reference): array
     {
         $extensionKey = 'flux';
         if (0 === strpos($reference, 'EXT:')) {
             $extensionKey = substr($reference, 4, strpos($reference, '/') - 4);
         }
-        return GeneralUtility::makeInstance(TemplatePaths::class, ExtensionNamingUtility::getExtensionKey($extensionKey))->toArray();
+        $templatePaths = $this->createTemplatePaths($extensionKey);
+        return $templatePaths->toArray();
     }
 
-    /**
-     * Get definitions of paths for Page Templates defined in TypoScript
-     *
-     * @param string $extensionName
-     * @return array
-     * @api
-     */
-    public function getPageConfiguration($extensionName = null)
+    public function getPageConfiguration(?string $extensionName = null): array
     {
         if (null !== $extensionName && true === empty($extensionName)) {
             // Note: a NULL extensionName means "fetch ALL defined collections" whereas
             // an empty value that is not null indicates an incorrect caller. Instead
             // of returning ALL paths here, an empty array is the proper return value.
             // However, dispatch a debug message to inform integrators of the problem.
-            GeneralUtility::makeInstance(LogManager::class)->getLogger(__CLASS__)->log(
+            $this->getLogger()->log(
                 'notice',
                 'Template paths have been attempted fetched using an empty value that is NOT NULL in ' .
                 get_class($this) . '. This indicates a potential problem with your TypoScript configuration - a ' .
@@ -374,30 +273,56 @@ class FluxService implements SingletonInterface
             return [];
         }
 
-        $plugAndPlayEnabled = ExtensionConfigurationUtility::getOption(ExtensionConfigurationUtility::OPTION_PLUG_AND_PLAY);
-        $plugAndPlayTemplatesDirectory = trim(ExtensionConfigurationUtility::getOption(ExtensionConfigurationUtility::OPTION_PLUG_AND_PLAY_DIRECTORY), '/.') . '/';
+        $plugAndPlayEnabled = ExtensionConfigurationUtility::getOption(
+            ExtensionConfigurationUtility::OPTION_PLUG_AND_PLAY
+        );
+        $plugAndPlayDirectory = ExtensionConfigurationUtility::getOption(
+            ExtensionConfigurationUtility::OPTION_PLUG_AND_PLAY_DIRECTORY
+        );
+        if (!is_scalar($plugAndPlayDirectory)) {
+            return [];
+        }
+        $plugAndPlayTemplatesDirectory = trim((string) $plugAndPlayDirectory, '/.') . '/';
         if ($plugAndPlayEnabled && $extensionName === 'Flux') {
             return [
-                TemplatePaths::CONFIG_TEMPLATEROOTPATHS => [$plugAndPlayTemplatesDirectory . DropInContentTypeDefinition::TEMPLATES_DIRECTORY . DropInContentTypeDefinition::PAGE_DIRECTORY],
-                TemplatePaths::CONFIG_PARTIALROOTPATHS => [$plugAndPlayTemplatesDirectory . DropInContentTypeDefinition::PARTIALS_DIRECTORY],
-                TemplatePaths::CONFIG_LAYOUTROOTPATHS => [$plugAndPlayTemplatesDirectory . DropInContentTypeDefinition::LAYOUTS_DIRECTORY],
+                TemplatePaths::CONFIG_TEMPLATEROOTPATHS => [
+                    $plugAndPlayTemplatesDirectory
+                    . DropInContentTypeDefinition::TEMPLATES_DIRECTORY
+                    . DropInContentTypeDefinition::PAGE_DIRECTORY
+                ],
+                TemplatePaths::CONFIG_PARTIALROOTPATHS => [
+                    $plugAndPlayTemplatesDirectory . DropInContentTypeDefinition::PARTIALS_DIRECTORY
+                ],
+                TemplatePaths::CONFIG_LAYOUTROOTPATHS => [
+                    $plugAndPlayTemplatesDirectory . DropInContentTypeDefinition::LAYOUTS_DIRECTORY
+                ],
             ];
         }
         if (null !== $extensionName) {
-            return GeneralUtility::makeInstance(TemplatePaths::class, ExtensionNamingUtility::getExtensionKey($extensionName))->toArray();
+            $templatePaths = $this->createTemplatePaths($extensionName);
+            return $templatePaths->toArray();
         }
         $configurations = [];
         $registeredExtensionKeys = Core::getRegisteredProviderExtensionKeys('Page');
         foreach ($registeredExtensionKeys as $registeredExtensionKey) {
-            $configurations[$registeredExtensionKey] = GeneralUtility::makeInstance(TemplatePaths::class, ExtensionNamingUtility::getExtensionKey($registeredExtensionKey))->toArray();
+            $templatePaths = $this->createTemplatePaths($registeredExtensionKey);
+            $configurations[$registeredExtensionKey] = $templatePaths->toArray();
         }
         if ($plugAndPlayEnabled) {
             $configurations['FluidTYPO3.Flux'] = array_replace(
                 $configurations['FluidTYPO3.Flux'] ?? [],
                 [
-                    TemplatePaths::CONFIG_TEMPLATEROOTPATHS => [$plugAndPlayTemplatesDirectory . DropInContentTypeDefinition::TEMPLATES_DIRECTORY],
-                    TemplatePaths::CONFIG_PARTIALROOTPATHS => [$plugAndPlayTemplatesDirectory . DropInContentTypeDefinition::PARTIALS_DIRECTORY],
-                    TemplatePaths::CONFIG_LAYOUTROOTPATHS => [$plugAndPlayTemplatesDirectory . DropInContentTypeDefinition::LAYOUTS_DIRECTORY],
+                    TemplatePaths::CONFIG_TEMPLATEROOTPATHS => [
+                        $plugAndPlayTemplatesDirectory
+                        . DropInContentTypeDefinition::TEMPLATES_DIRECTORY
+                        . DropInContentTypeDefinition::PAGE_DIRECTORY
+                    ],
+                    TemplatePaths::CONFIG_PARTIALROOTPATHS => [
+                        $plugAndPlayTemplatesDirectory . DropInContentTypeDefinition::PARTIALS_DIRECTORY
+                    ],
+                    TemplatePaths::CONFIG_LAYOUTROOTPATHS => [
+                        $plugAndPlayTemplatesDirectory . DropInContentTypeDefinition::LAYOUTS_DIRECTORY
+                    ],
                 ]
             );
         }
@@ -409,48 +334,98 @@ class FluxService implements SingletonInterface
      * returns the main PageProvider type which needs to be used
      * as primary PageProvider when processing a complete page
      * rather than just the "sub configuration" field value.
-     *
-     * @param array $row
-     * @return ProviderInterface|NULL
      */
-    public function resolvePageProvider($row)
+    public function resolvePageProvider(array $row): ?ProviderInterface
     {
         $provider = $this->resolvePrimaryConfigurationProvider('pages', PageProvider::FIELD_NAME_MAIN, $row);
         return $provider;
     }
 
-    /**
-     * @param array $identifyingValues
-     * @return string
-     */
-    protected function createCacheIdFromValues(array $identifyingValues)
+    protected function createCacheIdFromValues(array $identifyingValues): string
     {
         return 'flux-' . md5(serialize($identifyingValues));
     }
 
     /**
-     * @return VariableFrontend
+     * @codeCoverageIgnore
      */
-    protected function getRuntimeCache()
-    {
-        static $cache;
-        return $cache ?? ($cache = GeneralUtility::makeInstance(CacheManager::class)->getCache('cache_runtime'));
-    }
-
-    /**
-     * @return VariableFrontend
-     */
-    protected function getPersistentCache()
+    protected function getRuntimeCache(): FrontendInterface
     {
         static $cache;
         if (!$cache) {
+            /** @var CacheManager $cacheManager */
+            $cacheManager = GeneralUtility::makeInstance(CacheManager::class);
+            $cache = $cacheManager->getCache('runtime');
+        }
+        return $cache;
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function getPersistentCache(): FrontendInterface
+    {
+        static $cache;
+        if (!$cache) {
+            /** @var CacheManager $cacheManager */
             $cacheManager = GeneralUtility::makeInstance(CacheManager::class);
             try {
                 $cache = $cacheManager->getCache('flux');
             } catch (NoSuchCacheException $error) {
-                $cache = $cacheManager->getCache('cache_runtime');
+                $cache = $cacheManager->getCache('runtime');
             }
         }
         return $cache;
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function createTemplatePaths(string $registeredExtensionKey): TemplatePaths
+    {
+        /** @var TemplatePaths $templatePaths */
+        $templatePaths = GeneralUtility::makeInstance(
+            TemplatePaths::class,
+            ExtensionNamingUtility::getExtensionKey($registeredExtensionKey)
+        );
+        return $templatePaths;
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function getFormDataTransformer(): FormDataTransformer
+    {
+        /** @var FormDataTransformer $transformer */
+        $transformer = GeneralUtility::makeInstance(FormDataTransformer::class);
+        return $transformer;
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function getFlexFormService(): FlexFormService
+    {
+        /** @var FlexFormService $flexFormService */
+        $flexFormService = GeneralUtility::makeInstance(FlexFormService::class);
+        return $flexFormService;
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function getLogger(): LoggerInterface
+    {
+        /** @var LogManager $logManager */
+        $logManager = GeneralUtility::makeInstance(LogManager::class);
+        return $logManager->getLogger(__CLASS__);
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function resolveAbsolutePathForFilename(string $filename): string
+    {
+        return GeneralUtility::getFileAbsFileName($filename);
     }
 }

@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\Backend;
 
 /*
@@ -17,92 +18,45 @@ use TYPO3\CMS\Core\Exception\SiteNotFoundException;
 use TYPO3\CMS\Core\Site\SiteFinder;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Extbase\Configuration\ConfigurationManager;
 use TYPO3\CMS\Extbase\Configuration\ConfigurationManagerInterface;
-use TYPO3\CMS\Extbase\Object\ObjectManager;
 
-/**
- * Class for provisioning page layout selections for backend form fields
- */
 class PageLayoutDataProvider
 {
+    protected ConfigurationManagerInterface $configurationManager;
+    protected FluxService $configurationService;
+    protected PageService $pageService;
 
-    /**
-     * @var ConfigurationManagerInterface
-     */
-    protected $configurationManager;
-
-    /**
-     * @var FluxService
-     */
-    protected $configurationService;
-
-    /**
-     * @var array
-     */
-    protected $recognizedFormats = ['html', 'xml', 'txt', 'json', 'js', 'css'];
-
-    /**
-     * @var PageService
-     */
-    protected $pageService;
-
-    /**
-     * @param ConfigurationManagerInterface $configurationManager
-     * @return void
-     */
-    public function injectConfigurationManager(ConfigurationManagerInterface $configurationManager)
+    public function __construct()
     {
+        /** @var ConfigurationManagerInterface $configurationManager */
+        $configurationManager = GeneralUtility::makeInstance(ConfigurationManager::class);
         $this->configurationManager = $configurationManager;
-    }
 
-    /**
-     * @param FluxService $configurationService
-     * @return void
-     */
-    public function injectConfigurationService(FluxService $configurationService)
-    {
-        $this->configurationService = $configurationService;
-    }
+        /** @var FluxService $fluxService */
+        $fluxService = GeneralUtility::makeInstance(FluxService::class);
+        $this->configurationService = $fluxService;
 
-    /**
-     * @param PageService $pageService
-     * @return void
-     */
-    public function injectPageService(PageService $pageService)
-    {
+        /** @var PageService $pageService */
+        $pageService = GeneralUtility::makeInstance(PageService::class);
         $this->pageService = $pageService;
     }
 
-    /**
-     * CONSTRUCTOR
-     */
-    public function __construct()
-    {
-        $objectManager = GeneralUtility::makeInstance(ObjectManager::class);
-        $this->injectConfigurationManager($objectManager->get(ConfigurationManagerInterface::class));
-        $this->injectConfigurationService($objectManager->get(FluxService::class));
-        $this->injectPageService($objectManager->get(PageService::class));
-    }
-
-    /**
-     * @param array $parameters
-     * @return array
-     */
-    public function addItems(array $parameters)
+    public function addItems(array $parameters): array
     {
         $typoScript = $this->configurationManager->getConfiguration(
             ConfigurationManagerInterface::CONFIGURATION_TYPE_FULL_TYPOSCRIPT
         );
-        $settings = GeneralUtility::removeDotsFromTS((array) $typoScript['plugin.']['tx_flux.']);
+        $settings = GeneralUtility::removeDotsFromTS((array) ($typoScript['plugin.']['tx_flux.'] ?? []));
         if (isset($settings['siteRootInheritance'])) {
             $hideInheritFieldSiteRoot = 1 > $settings['siteRootInheritance'];
         } else {
             $hideInheritFieldSiteRoot = false;
         }
-        $pageIsSiteRoot = (boolean) ($parameters['row']['is_siteroot']);
-        $forceDisplayInheritSiteRoot = 'tx_fed_page_controller_action_sub' === $parameters['field']
+        $pageIsSiteRoot = (boolean) ($parameters['row']['is_siteroot'] ?? false);
+        $forceDisplayInheritSiteRoot = 'tx_fed_page_controller_action_sub' === ($parameters['field'] ?? null)
             && !$hideInheritFieldSiteRoot;
-        $forceHideInherit = (boolean) (0 === intval($parameters['row']['pid']));
+        $forceHideInherit = (0 === (int) ($parameters['row']['pid'] ?? 0));
         if (!$forceHideInherit) {
             if (!$pageIsSiteRoot || $forceDisplayInheritSiteRoot || !$hideInheritFieldSiteRoot) {
                 $parameters['items'][] = [
@@ -114,15 +68,18 @@ class PageLayoutDataProvider
         }
 
         $allowedTemplates = [];
-        $pageUid = (int) $parameters['row']['uid'];
-        if ($pageUid > 0 && class_exists(SiteFinder::class)) {
+        $pageUid = (int) ($parameters['row']['uid'] ?? 0);
+        if ($pageUid > 0) {
+            /** @var SiteFinder $resolver */
             $resolver = GeneralUtility::makeInstance(SiteFinder::class);
             try {
                 $site = $resolver->getSiteByPageId($pageUid);
                 $siteConfiguration = $site->getConfiguration();
-                if (!empty($siteConfiguration['flux_page_templates'])) {
-                    $allowedTemplates = GeneralUtility::trimExplode(',', $siteConfiguration['flux_page_templates'] ?? '', true);
-                }
+                $allowedTemplates = GeneralUtility::trimExplode(
+                    ',',
+                    $siteConfiguration['flux_page_templates'] ?? '',
+                    true
+                );
             } catch (SiteNotFoundException $exception) {
                 $allowedTemplates = [];
             }
@@ -135,20 +92,16 @@ class PageLayoutDataProvider
                 $this->renderOptions($extension, $group, $parameters, $allowedTemplates)
             );
         }
+
+        return $parameters;
     }
 
-    protected function renderOptions($extension, array $group, array $parameters, array $allowedTemplates): array
+    protected function renderOptions(string $extension, array $group, array $parameters, array $allowedTemplates): array
     {
         $options = [];
-        if (false === empty($group)) {
+        if (!empty($group)) {
             $extensionKey = ExtensionNamingUtility::getExtensionKey($extension);
-            if (false === ExtensionManagementUtility::isLoaded($extensionKey)) {
-                $groupTitle = ucfirst($extension);
-            } else {
-                $emConfigFile = ExtensionManagementUtility::extPath($extensionKey, 'ext_emconf.php');
-                require $emConfigFile;
-                $groupTitle = reset($EM_CONF)['title'];
-            }
+            $groupTitle = $this->getGroupTitle($extensionKey);
 
             $templateOptions = [];
             foreach ($group as $form) {
@@ -169,15 +122,42 @@ class PageLayoutDataProvider
     {
         $extension = $form->getExtensionName();
         $thumbnail = MiscellaneousUtility::getIconForTemplate($form);
-        if (null !== $thumbnail) {
+        if ($thumbnail) {
             $thumbnail = ltrim($thumbnail, '/');
             $thumbnail = GeneralUtility::getFileAbsFileName($thumbnail);
             $thumbnail = $thumbnail ? MiscellaneousUtility::createIcon($thumbnail) : null;
         }
+        /** @var string|null $template */
         $template = $form->getOption(Form::OPTION_TEMPLATEFILE_RELATIVE);
+        if ($template === null) {
+            return [];
+        }
         $label = $form->getLabel();
         $optionValue = $extension . '->' . lcfirst($template);
         $option = [$label, $optionValue, $thumbnail];
         return $option;
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function getGroupTitle(string $extensionKey): string
+    {
+        if (!$this->isExtensionLoaded($extensionKey)) {
+            $groupTitle = ucfirst($extensionKey);
+        } else {
+            $emConfigFile = ExtensionManagementUtility::extPath($extensionKey, 'ext_emconf.php');
+            require $emConfigFile;
+            $groupTitle = reset($EM_CONF)['title'];
+        }
+        return $groupTitle;
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function isExtensionLoaded(string $extensionKey): bool
+    {
+        return ExtensionManagementUtility::isLoaded($extensionKey);
     }
 }

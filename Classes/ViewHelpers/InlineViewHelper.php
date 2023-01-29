@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\ViewHelpers;
 
 /*
@@ -38,33 +39,38 @@ class InlineViewHelper extends AbstractViewHelper
 {
     use CompileWithContentArgumentAndRenderStatic;
 
+    /**
+     * @var boolean
+     */
     protected $escapeChildren = false;
 
+    /**
+     * @var boolean
+     */
     protected $escapeOutput = false;
 
-    /**
-     * @return void
-     */
-    public function initializeArguments()
+    public function initializeArguments(): void
     {
         $this->registerArgument(
             'code',
             'string',
-            'Fluid code to be rendered as if it were part of the template rendering it. Can be passed as inline argument or tag content'
+            'Fluid code to be rendered as if it were part of the template rendering it. '
+                . 'Can be passed as inline argument or tag content'
         );
     }
 
     /**
-     * @param array $arguments
-     * @param \Closure $renderChildrenClosure
-     * @param RenderingContextInterface $renderingContext
-     * @return mixed|string
+     * @return mixed
      */
     public static function renderStatic(
         array $arguments,
         \Closure $renderChildrenClosure,
         RenderingContextInterface $renderingContext
     ) {
-        return $renderingContext->getTemplateParser()->parse(new Source($renderChildrenClosure()))->evaluate($renderingContext);
+        $source = $renderChildrenClosure();
+        return $renderingContext->getTemplateParser()
+            ->parse(class_exists(Source::class) ? new Source($source) : $source)
+            ->getRootNode()
+            ->evaluate($renderingContext);
     }
 }

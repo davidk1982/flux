@@ -72,6 +72,11 @@ Each element gets a red border:
           <xsd:documentation><![CDATA[Optional returning variable as original table rows]]></xsd:documentation>
         </xsd:annotation>
       </xsd:attribute>
+      <xsd:attribute type="xsd:boolean" name="hideUntranslated" default="false">
+        <xsd:annotation>
+          <xsd:documentation><![CDATA[Exclude untranslated records]]></xsd:documentation>
+        </xsd:annotation>
+      </xsd:attribute>
     </xsd:complexType>
   </xsd:element>
   <xsd:element name="content.render">
@@ -142,6 +147,11 @@ be rendered.
       <xsd:attribute type="xsd:boolean" name="render" default="true">
         <xsd:annotation>
           <xsd:documentation><![CDATA[Optional returning variable as original table rows]]></xsd:documentation>
+        </xsd:annotation>
+      </xsd:attribute>
+      <xsd:attribute type="xsd:boolean" name="hideUntranslated" default="false">
+        <xsd:annotation>
+          <xsd:documentation><![CDATA[Exclude untranslated records]]></xsd:documentation>
         </xsd:annotation>
       </xsd:attribute>
     </xsd:complexType>
@@ -1203,8 +1213,8 @@ DEPRECATED - use flux:field instead
       </xsd:attribute>
       <xsd:attribute type="xsd:boolean" name="useCombination" default="false">
         <xsd:annotation>
-          <xsd:documentation><![CDATA[For use on bidirectional relations using an intermediary table. In combinations, it's possible to edit ' .
-           'attributes and the related child record.]]></xsd:documentation>
+          <xsd:documentation><![CDATA[For use on bidirectional relations using an intermediary table. In combinations, it's possible to edit '
+           . 'attributes and the related child record.]]></xsd:documentation>
         </xsd:annotation>
       </xsd:attribute>
       <xsd:attribute type="xsd:boolean" name="useSortable" default="false">
@@ -1234,8 +1244,8 @@ DEPRECATED - use flux:field instead
       </xsd:attribute>
       <xsd:attribute type="xsd:anySimpleType" name="enabledControls" default="false">
         <xsd:annotation>
-          <xsd:documentation><![CDATA[Associative array with the keys 'info', 'new', 'dragdrop', 'sort', 'hide', delete' and 'localize'. ' .
-           'Set either one to TRUE or FALSE to show or hide it.]]></xsd:documentation>
+          <xsd:documentation><![CDATA[Associative array with the keys 'info', 'new', 'dragdrop', 'sort', 'hide', delete' and 'localize'. '
+           . 'Set either one to TRUE or FALSE to show or hide it.]]></xsd:documentation>
         </xsd:annotation>
       </xsd:attribute>
       <xsd:attribute type="xsd:anySimpleType" name="headerThumbnail" default="false">
@@ -1318,19 +1328,19 @@ The crop configuration can now be passed to the image viewhelper:
 
     <f:section name="Main">
       <f:for each="{v:content.resources.fal(field: 'settings.slides')}" as="image" iteration="iterator">
-        <f:image src="{image.id}" height="300" class="leb-pic" crop="{image.crop}" cropVariant="default"/>
+        <f:image src="{image.uid}" height="300" class="leb-pic" crop="{image.crop}" cropVariant="default"/>
       </f:for>
     </f:section>
 
 #### Rendering the image
 
     {v:content.resources.fal(field: 'settings.image') -> v:iterator.first() -> v:variable.set(name: 'image')}
-    <f:image treatIdAsReference="1" src="{image.id}" title="{image.title}" alt="{image.alternative}"/><br/>
+    <f:image treatIdAsReference="1" src="{image.uid}" title="{image.title}" alt="{image.alternative}"/><br/>
 
 #### Rendering multiple images
 
     <f:for each="{v:content.resources.fal(field: 'settings.image')}" as="image">
-        <f:image treatIdAsReference="1" src="{image.id}" title="{image.title}" alt="{image.alternative}"/><br/>
+        <f:image treatIdAsReference="1" src="{image.uid}" title="{image.title}" alt="{image.alternative}"/><br/>
     </f:for>
 /]]></xsd:documentation>
     </xsd:annotation>
@@ -1585,8 +1595,8 @@ The crop configuration can now be passed to the image viewhelper:
       </xsd:attribute>
       <xsd:attribute type="xsd:boolean" name="useCombination" default="false">
         <xsd:annotation>
-          <xsd:documentation><![CDATA[For use on bidirectional relations using an intermediary table. In combinations, it's possible to edit ' .
-           'attributes and the related child record.]]></xsd:documentation>
+          <xsd:documentation><![CDATA[For use on bidirectional relations using an intermediary table. In combinations, it's possible to edit '
+           . 'attributes and the related child record.]]></xsd:documentation>
         </xsd:annotation>
       </xsd:attribute>
       <xsd:attribute type="xsd:boolean" name="useSortable" default="true">
@@ -1616,8 +1626,8 @@ The crop configuration can now be passed to the image viewhelper:
       </xsd:attribute>
       <xsd:attribute type="xsd:anySimpleType" name="enabledControls" default="false">
         <xsd:annotation>
-          <xsd:documentation><![CDATA[Associative array with the keys 'info', 'new', 'dragdrop', 'sort', 'hide', delete' and 'localize'. ' .
-           'Set either one to TRUE or FALSE to show or hide it.]]></xsd:documentation>
+          <xsd:documentation><![CDATA[Associative array with the keys 'info', 'new', 'dragdrop', 'sort', 'hide', delete' and 'localize'. '
+           . 'Set either one to TRUE or FALSE to show or hide it.]]></xsd:documentation>
         </xsd:annotation>
       </xsd:attribute>
       <xsd:attribute type="xsd:anySimpleType" name="headerThumbnail" default="false">
@@ -1640,7 +1650,7 @@ The crop configuration can now be passed to the image viewhelper:
           <xsd:documentation><![CDATA[Level links position.]]></xsd:documentation>
         </xsd:annotation>
       </xsd:attribute>
-      <xsd:attribute type="xsd:string" name="allowedExtensions" default="NULL">
+      <xsd:attribute type="xsd:string" name="allowedExtensions" default="''">
         <xsd:annotation>
           <xsd:documentation><![CDATA[Allowed File Extensions .]]></xsd:documentation>
         </xsd:annotation>
@@ -2305,8 +2315,9 @@ allows selecting a content element from the current page:
                          table="tt_content"
                          condition="AND tt_content.pid = ###THIS_UID###" />
 
-A list of allowed markers for the `condition` can be found in the
-[TCA "select" type `foreign_table_where` documentation](https://docs.typo3.org/typo3cms/TCAReference/ColumnsConfig/Type/Select.html#foreign-table-where).
+A list of allowed markers for the `condition` can be found in the documentation at:
+
+https://docs.typo3.org/typo3cms/TCAReference/ColumnsConfig/Type/Select.html#foreign-table-where
 
 DEPRECATED - use flux:field instead
 /]]></xsd:documentation>
@@ -3675,6 +3686,19 @@ Since the `page` variable is available in fluidcontent elements, we
 can use it to access page configuration data:
 
     <flux:form.data table="pages" field="tx_fed_page_flexform" record="{page}" />
+
+### Example: Check if page is accessible before loading data
+
+Data of disabled and deleted pages cannot be loaded with flux:form.data
+and lead to an TYPO3FluidFluidCoreViewHelperException.
+To prevent this exception, check if the page is accessible by generating
+a link to it:
+
+    <f:if condition="{f:uri.page(pageUid: myUid)}">
+        <flux:form.data table="pages" field="tx_fed_page_flexform" uid="{myUid}" as="pageSettings">
+            ...
+        </flux:form.data>
+    </f:if>
 /]]></xsd:documentation>
     </xsd:annotation>
     <xsd:complexType mixed="true">
@@ -3784,7 +3808,7 @@ the section objects and creating a column for each.
 Example
 -------
 
-      <flux:form id="sectionobjectasmanualgrid" options="{static: 1}" extensionName="FluidTYPO3.TestProviderExtension">
+      <flux:form id="sectionobjectasgrid" options="{static: 1}" extensionName="FluidTYPO3.TestProviderExtension">
           <flux:form.sheet name="options">
               <flux:form.section name="columns">
                   <flux:form.object name="column" label="Column">
@@ -4387,7 +4411,7 @@ your "ContentController", "PageController" etc.
       </xsd:attribute>
       <xsd:attribute type="xsd:string" name="extensionName" default="NULL">
         <xsd:annotation>
-          <xsd:documentation><![CDATA[Target Extension Name (without "tx_" prefix and no underscores). If NULL the current extension name is used]]></xsd:documentation>
+          <xsd:documentation><![CDATA[Target Extension Name (without `tx_` prefix and no underscores). If NULL the current extension name is used]]></xsd:documentation>
         </xsd:annotation>
       </xsd:attribute>
       <xsd:attribute type="xsd:string" name="pluginName" default="NULL">
@@ -4413,11 +4437,6 @@ your "ContentController", "PageController" etc.
       <xsd:attribute type="xsd:anySimpleType" name="noCache" default="false">
         <xsd:annotation>
           <xsd:documentation><![CDATA[set this to disable caching for the target page. You should not need this.]]></xsd:documentation>
-        </xsd:annotation>
-      </xsd:attribute>
-      <xsd:attribute type="xsd:anySimpleType" name="noCacheHash" default="NULL">
-        <xsd:annotation>
-          <xsd:documentation><![CDATA[Deprecated: Set this to suppress the cHash query parameter created by TypoLink. You should not need this.]]></xsd:documentation>
         </xsd:annotation>
       </xsd:attribute>
       <xsd:attribute type="xsd:string" name="section" default="''">
@@ -4450,9 +4469,9 @@ your "ContentController", "PageController" etc.
           <xsd:documentation><![CDATA[arguments to be removed from the action URI. Only active if $addQueryString = TRUE and $actionUri is not set]]></xsd:documentation>
         </xsd:annotation>
       </xsd:attribute>
-      <xsd:attribute type="xsd:string" name="addQueryStringMethod" default="'GET'">
+      <xsd:attribute type="xsd:string" name="addQueryStringMethod" default="NULL">
         <xsd:annotation>
-          <xsd:documentation><![CDATA[Method to use when keeping query parameters (only active if $actionUri is not set)]]></xsd:documentation>
+          <xsd:documentation><![CDATA[This argument is not evaluated anymore and will be removed in TYPO3 v12.]]></xsd:documentation>
         </xsd:annotation>
       </xsd:attribute>
       <xsd:attribute type="xsd:string" name="fieldNamePrefix" default="NULL">

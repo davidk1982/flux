@@ -9,14 +9,12 @@ namespace FluidTYPO3\Flux\Tests\Unit\Outlet\Pipe;
  */
 
 use FluidTYPO3\Flux\Tests\Unit\AbstractTestCase;
-use TYPO3\CMS\Extbase\Reflection\ObjectAccess;
 
 /**
  * AbstractPipeTestCase
  */
 abstract class AbstractPipeTestCase extends AbstractTestCase
 {
-
     /**
      * @var array
      */

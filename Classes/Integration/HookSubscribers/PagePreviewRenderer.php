@@ -13,57 +13,52 @@ use FluidTYPO3\Flux\Provider\PageProvider;
 use TYPO3\CMS\Backend\Controller\PageLayoutController;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Extbase\Object\ObjectManager;
 
-/**
- * Class PagePreviewRenderer
- */
 class PagePreviewRenderer
 {
-    /**
-     * @param array $params
-     * @param PageLayoutController $pageLayoutController
-     * @return string
-     */
-    public function render(array $params, PageLayoutController $pageLayoutController)
+    public function render(array $params, PageLayoutController $pageLayoutController): string
     {
         $pageProvider = $this->getPageProvider();
         $previewContent = '';
 
-        $row = $this->getRecord($pageLayoutController->id);
+        $idProperty = new \ReflectionProperty($pageLayoutController, 'id');
+        $idProperty->setAccessible(true);
+        $id = $idProperty->getValue($pageLayoutController);
+
+        $row = $this->getRecord(is_scalar($id) ? (integer) $id : 0);
         if (!$row) {
             return '';
         }
 
         $form = $pageProvider->getForm($row);
 
-        if ($form) {
+        if ($form && $form->getEnabled()) {
             // Force the preview to *not* generate content column HTML in preview
             $form->setOption(PreviewView::OPTION_PREVIEW, [
                 PreviewView::OPTION_MODE => PreviewView::MODE_NONE
             ]);
 
-            list(, $previewContent, ) = $pageProvider->getPreview($row);
+            [, $previewContent, ] = $pageProvider->getPreview($row);
         }
 
         return $previewContent;
     }
 
     /**
-     * @param $uid
-     * @return array|null
+     * @codeCoverageIgnore
      */
-    protected function getRecord($uid)
+    protected function getRecord(int $uid): ?array
     {
         return BackendUtility::getRecord('pages', $uid);
     }
 
     /**
-     * @return PageProvider
      * @codeCoverageIgnore
      */
-    protected function getPageProvider()
+    protected function getPageProvider(): PageProvider
     {
-        return GeneralUtility::makeInstance(ObjectManager::class)->get(PageProvider::class);
+        /** @var PageProvider $pageProvider */
+        $pageProvider = GeneralUtility::makeInstance(PageProvider::class);
+        return $pageProvider;
     }
 }

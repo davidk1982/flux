@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\Form\Container;
 
 /*
@@ -14,7 +15,7 @@ use FluidTYPO3\Flux\Form\Field\ColumnPosition;
 use FluidTYPO3\Flux\Form\Field\Input;
 use FluidTYPO3\Flux\Form\Field\Select;
 use FluidTYPO3\Flux\Form\FieldContainerInterface;
-use FluidTYPO3\Flux\Form\FieldInterface;
+use FluidTYPO3\Flux\Form\FormInterface;
 
 /**
  * Section Object
@@ -29,19 +30,10 @@ use FluidTYPO3\Flux\Form\FieldInterface;
  */
 class SectionObject extends AbstractFormContainer implements ContainerInterface, FieldContainerInterface
 {
-    /**
-     * @var bool
-     */
-    protected $contentContainer = false;
+    protected bool $contentContainer = false;
 
-    /**
-     * @return array
-     */
-    public function build()
+    public function build(): array
     {
-        if ($this->contentContainer && !$this->has(ColumnPosition::FIELD_NAME)) {
-            $this->createContentContainerFields();
-        }
         $label = $this->getLabel();
         $structureArray = [
             'title' => $label,
@@ -51,34 +43,29 @@ class SectionObject extends AbstractFormContainer implements ContainerInterface,
         return $structureArray;
     }
 
-    /**
-     * @return bool
-     */
-    public function isContentContainer()
+    public function isContentContainer(): bool
     {
         return $this->contentContainer;
     }
 
-    /**
-     * @param bool $contentContainer
-     */
-    public function setContentContainer($contentContainer)
+    public function setContentContainer(bool $contentContainer): self
     {
         $this->contentContainer = (bool) $contentContainer;
         if ($this->contentContainer && !$this->has(ColumnPosition::FIELD_NAME)) {
             $this->createContentContainerFields();
         }
+        return $this;
     }
 
     /**
-     * @return FieldInterface[]
+     * @return FormInterface[]
      */
-    public function getFields()
+    public function getFields(): iterable
     {
-        return (array) iterator_to_array($this->children);
+        return iterator_to_array($this->children);
     }
 
-    protected function createContentContainerFields()
+    protected function createContentContainerFields(): void
     {
         $this->createField(ColumnPosition::class, ColumnPosition::FIELD_NAME);
         $this->createField(Input::class, 'label', 'Content area name/label');

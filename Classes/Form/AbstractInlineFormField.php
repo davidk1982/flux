@@ -15,7 +15,6 @@ use FluidTYPO3\Flux\Form;
  */
 abstract class AbstractInlineFormField extends AbstractRelationFormField implements InlineRelationFieldInterface
 {
-
     /**
      * If true, all child records are shown as collapsed.
      *
@@ -137,11 +136,7 @@ abstract class AbstractInlineFormField extends AbstractRelationFormField impleme
      */
     protected $foreignTypes = null;
 
-    /**
-     * @param string $type
-     * @return array
-     */
-    public function prepareConfiguration($type)
+    public function prepareConfiguration(string $type): array
     {
         $configuration = parent::prepareConfiguration($type);
         $configuration['foreign_match_fields'] = $this->getForeignMatchFields();
@@ -415,7 +410,7 @@ abstract class AbstractInlineFormField extends AbstractRelationFormField impleme
     }
 
     /**
-     * @return array
+     * @return string|null
      */
     public function getLevelLinksPosition()
     {
@@ -426,6 +421,7 @@ abstract class AbstractInlineFormField extends AbstractRelationFormField impleme
      * @param array $foreignSelectorFieldTcaOverride
      * @return RelationFieldInterface
      * @deprecated Please switch to overrideChildTca
+     * @codeCoverageIgnore
      */
     public function setForeignSelectorFieldTcaOverride($foreignSelectorFieldTcaOverride)
     {
@@ -440,10 +436,13 @@ abstract class AbstractInlineFormField extends AbstractRelationFormField impleme
     /**
      * @return array
      * @deprecated Please switch to overrideChildTca
+     * @codeCoverageIgnore
      */
     public function getForeignSelectorFieldTcaOverride()
     {
-        return isset($this->overrideChildTca['columns']['uid_local']) ? $this->overrideChildTca['columns']['uid_local'] : null;
+        return isset($this->overrideChildTca['columns']['uid_local'])
+            ? $this->overrideChildTca['columns']['uid_local']
+            : null;
     }
 
     /**
@@ -457,7 +456,7 @@ abstract class AbstractInlineFormField extends AbstractRelationFormField impleme
     }
 
     /**
-     * @return string
+     * @return array
      */
     public function getOverrideChildTca()
     {
@@ -465,12 +464,12 @@ abstract class AbstractInlineFormField extends AbstractRelationFormField impleme
     }
 
     /**
-     * @param array $foreignTypes
+     * @param array|null $foreignTypes
      * @return RelationFieldInterface
      */
     public function setForeignTypes($foreignTypes)
     {
-        $this->foreignTypes = true === is_array($foreignTypes) ? $foreignTypes : null;
+        $this->foreignTypes = $foreignTypes ?? [];
         return $this;
     }
 

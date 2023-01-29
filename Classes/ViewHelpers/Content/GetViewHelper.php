@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\ViewHelpers\Content;
 
 /*
@@ -11,6 +12,7 @@ namespace FluidTYPO3\Flux\ViewHelpers\Content;
 use FluidTYPO3\Flux\Form\Container\Column;
 use FluidTYPO3\Flux\Form\Container\Grid;
 use FluidTYPO3\Flux\Hooks\HookHandler;
+use FluidTYPO3\Flux\Provider\AbstractProvider;
 use FluidTYPO3\Flux\Service\FluxService;
 use FluidTYPO3\Flux\Service\WorkspacesAwareRecordService;
 use FluidTYPO3\Flux\Utility\ColumnNumberUtility;
@@ -19,7 +21,6 @@ use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Context\Context;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Extbase\Configuration\ConfigurationManagerInterface;
-use TYPO3\CMS\Extbase\Object\ObjectManager;
 use TYPO3\CMS\Frontend\ContentObject\ContentObjectRenderer;
 use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
 use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewHelper;
@@ -61,26 +62,11 @@ class GetViewHelper extends AbstractViewHelper
      */
     protected $escapeOutput = false;
 
-    /**
-     * @var FluxService
-     */
-    protected static $configurationService;
+    protected static ?FluxService $configurationService = null;
+    protected static ?ConfigurationManagerInterface $configurationManager = null;
+    protected static ?WorkspacesAwareRecordService $recordService = null;
 
-    /**
-     * @var ConfigurationManagerInterface
-     */
-    protected static $configurationManager;
-
-    /**
-     * @var WorkspacesAwareRecordService
-     */
-    protected static $recordService;
-
-    /**
-     * Initialize
-     * @return void
-     */
-    public function initializeArguments()
+    public function initializeArguments(): void
     {
         $this->registerArgument('area', 'string', 'Name or "colPos" value of the content area to render', true);
         $this->registerArgument('limit', 'integer', 'Optional limit to the number of content elements to render');
@@ -104,22 +90,13 @@ class GetViewHelper extends AbstractViewHelper
     }
 
     /**
-     * Default implementation for use in compiled templates
-     *
-     * @param array $arguments
-     * @param \Closure $renderChildrenClosure
-     * @param RenderingContextInterface $renderingContext
-     * @return mixed
+     * @return string|array|null
      */
     public static function renderStatic(
         array $arguments,
         \Closure $renderChildrenClosure,
         RenderingContextInterface $renderingContext
     ) {
-        $objectManager = GeneralUtility::makeInstance(ObjectManager::class);
-        static::$configurationService = static::$configurationService ?? $objectManager->get(FluxService::class);
-        static::$configurationManager = static::$configurationManager ?? $objectManager->get(ConfigurationManagerInterface::class);
-
         $contentObjectRenderer = static::getContentObjectRenderer();
 
         $loadRegister = false;
@@ -128,6 +105,7 @@ class GetViewHelper extends AbstractViewHelper
             $loadRegister = true;
         }
         $templateVariableContainer = $renderingContext->getVariableProvider();
+<<<<<<< HEAD
         $record = (array) $renderingContext->getViewHelperVariableContainer()->get(FormViewHelper::class, 'record');
         
         if (class_exists(Context::class)) {
@@ -138,14 +116,34 @@ class GetViewHelper extends AbstractViewHelper
 
         if ($workspaceId) {
             $placeholder = BackendUtility::getWorkspaceVersionOfRecord($workspaceId,'tt_content', $record['uid']);
+=======
+        $record = $renderingContext->getViewHelperVariableContainer()->get(FormViewHelper::class, 'record');
+        if (!is_array($record)) {
+            return null;
+        }
+
+        /** @var Context $context */
+        $context = GeneralUtility::makeInstance(Context::class);
+        $workspaceId = $context->getPropertyFromAspect('workspace', 'id');
+
+        if (is_numeric($workspaceId) && $workspaceId > 0) {
+            $placeholder = BackendUtility::getWorkspaceVersionOfRecord(
+                (integer) $workspaceId,
+                'tt_content',
+                $record['uid'] ?? 0
+            );
+>>>>>>> f4c755f9a7f07e43e99dc29b61783216d5e3510e
             if ($placeholder) {
                 // Use the move placeholder if one exists, ensuring that "pid" and "tx_flux_parent" values are taken
                 // from the workspace-only placeholder.
+                /** @var array $record */
                 $record = $placeholder;
             }
         }
 
-        $grid = $renderingContext->getViewHelperVariableContainer()->get(FormViewHelper::class, 'provider')->getGrid($record);
+        /** @var AbstractProvider $provider */
+        $provider = $renderingContext->getViewHelperVariableContainer()->get(FormViewHelper::class, 'provider');
+        $grid = $provider->getGrid($record);
         $rows = static::getContentRecords($arguments, $record, $grid);
 
         $elements = false === (boolean) $arguments['render'] ? $rows : static::getRenderedRecords($rows);
@@ -165,22 +163,16 @@ class GetViewHelper extends AbstractViewHelper
             }
         }
         if ($loadRegister) {
-            $contentObjectRenderer->cObjGetSingle('RESTORE_REGISTER', '');
+            $contentObjectRenderer->cObjGetSingle('RESTORE_REGISTER', []);
         }
         return $content;
     }
 
-    /**
-     * @param array $arguments
-     * @param array $parent
-     * @param Grid $grid
-     * @return array
-     */
-    protected static function getContentRecords(array $arguments, array $parent, Grid $grid)
+    protected static function getContentRecords(array $arguments, array $parent, Grid $grid): array
     {
         $columnPosition = $arguments['area'];
-        if (!ctype_digit($columnPosition)) {
-            $column = $grid->get($columnPosition, true, Column::class);
+        if (!ctype_digit((string) $columnPosition)) {
+            $column = $grid->get((string) $columnPosition, true, Column::class);
             if ($column instanceof Column) {
                 $columnPosition = $column->getColumnPosition();
             } else {
@@ -197,8 +189,8 @@ class GetViewHelper extends AbstractViewHelper
         $conditions = sprintf(
             'colPos = %d',
             ColumnNumberUtility::calculateColumnNumberForParentAndColumn(
-                $parent['l18n_parent'] ?: $parent['uid'],
-                $columnPosition
+                ($parent['l18n_parent'] ?? null) ?: $parent['uid'],
+                (int) $columnPosition
             )
         );
 
@@ -209,8 +201,8 @@ class GetViewHelper extends AbstractViewHelper
                 'begin' => $arguments['offset'],
                 'orderBy' => $arguments['order'] . ' ' . $arguments['sortDirection'],
                 'where' => $conditions,
-                'pidInList' => $parent['pid'],
-                'includeRecordsWithoutDefaultTranslation' => !$arguments['hideUntranslated']
+                'pidInList' => $parent['pid'] ?? null,
+                'includeRecordsWithoutDefaultTranslation' => !($arguments['hideUntranslated'] ?? false)
             ]
         );
 
@@ -222,18 +214,7 @@ class GetViewHelper extends AbstractViewHelper
         )['records'];
     }
 
-    /**
-     * @return WorkspacesAwareRecordService
-     */
-    protected static function getRecordService()
-    {
-        return GeneralUtility::makeInstance(ObjectManager::class)->get(WorkspacesAwareRecordService::class);
-    }
-
-    /**
-     * @return ContentObjectRenderer
-     */
-    protected static function getContentObjectRenderer()
+    protected static function getContentObjectRenderer(): ContentObjectRenderer
     {
         return $GLOBALS['TSFE']->cObj;
     }
@@ -241,11 +222,8 @@ class GetViewHelper extends AbstractViewHelper
     /**
      * This function renders an array of tt_content record into an array of rendered content
      * it returns a list of elements rendered by typoscript RECORDS function
-     *
-     * @param array $rows database rows of records (each item is a tt_content table record)
-     * @return array
      */
-    protected static function getRenderedRecords($rows)
+    protected static function getRenderedRecords(array $rows): array
     {
         $elements = [];
         foreach ($rows as $row) {
@@ -254,7 +232,7 @@ class GetViewHelper extends AbstractViewHelper
                 'source' => $row['uid'],
                 'dontCheckPid' => 1,
             ];
-            array_push($elements, static::getContentObjectRenderer()->cObjGetSingle('RECORDS', $conf));
+            $elements[] = static::getContentObjectRenderer()->cObjGetSingle('RECORDS', $conf);
         }
         return HookHandler::trigger(
             HookHandler::NESTED_CONTENT_RENDERED,

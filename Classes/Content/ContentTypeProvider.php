@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\Content;
 
 /*
@@ -9,6 +10,7 @@ namespace FluidTYPO3\Flux\Content;
  */
 
 use FluidTYPO3\Flux\Content\TypeDefinition\RecordBased\RecordBasedContentTypeDefinition;
+use FluidTYPO3\Flux\Form;
 use FluidTYPO3\Flux\Provider\AbstractProvider;
 use FluidTYPO3\Flux\Provider\Interfaces\ContentTypeProviderInterface;
 use FluidTYPO3\Flux\Provider\Interfaces\DataStructureProviderInterface;
@@ -16,7 +18,6 @@ use FluidTYPO3\Flux\Provider\Interfaces\FormProviderInterface;
 use FluidTYPO3\Flux\Provider\Interfaces\PreviewProviderInterface;
 use FluidTYPO3\Flux\Provider\Interfaces\RecordProviderInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Extbase\Object\ObjectManager;
 
 /**
  * Flux Provider for content_types table
@@ -33,28 +34,35 @@ class ContentTypeProvider extends AbstractProvider implements
     DataStructureProviderInterface,
     FormProviderInterface
 {
-    protected $tableName = 'content_types';
-    protected $fieldName = 'content_configuration';
-    protected $extensionKey = 'FluidTYPO3.Builder';
+    protected ?string $tableName = 'content_types';
+    protected ?string $fieldName = 'content_configuration';
+    protected string $extensionKey = 'FluidTYPO3.Flux';
 
-    public function trigger(array $row, $table, $field, $extensionKey = null)
+    public function trigger(array $row, ?string $table, ?string $field, ?string $extensionKey = null): bool
     {
         return $table === $this->tableName && ($field === $this->fieldName || $field === null);
     }
 
-    public function getForm(array $row)
+    public function getForm(array $row): ?Form
     {
-        $objectManager = GeneralUtility::makeInstance(ObjectManager::class);
-        $contentType = $objectManager->get(RecordBasedContentTypeDefinition::class, $row);
-        if (!$contentType) {
-            throw new \RuntimeException(
-                sprintf('Content type "%s" from record UID "%d" is not managed by Flux', $row['CType'], $row['uid'])
-            );
-        }
-        $form = $objectManager->get(ContentTypeForm::class);
-        foreach ($contentType->getSheetNamesAndLabels() as $name => $label) {
+        $contentType = $this->resolveContentTypeDefinition($row);
+        /** @var ContentTypeForm $form */
+        $form = GeneralUtility::makeInstance(ContentTypeForm::class);
+        /** @var string[] $labels */
+        $labels = $contentType->getSheetNamesAndLabels();
+        foreach ($labels as $name => $label) {
             $form->createSheet($name, $label);
         }
         return $form;
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function resolveContentTypeDefinition(array $row): RecordBasedContentTypeDefinition
+    {
+        /** @var RecordBasedContentTypeDefinition $contentType */
+        $contentType = GeneralUtility::makeInstance(RecordBasedContentTypeDefinition::class, $row);
+        return $contentType;
     }
 }

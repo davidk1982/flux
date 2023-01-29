@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\ViewHelpers\Field;
 
 /*
@@ -45,12 +46,7 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
  */
 class SelectViewHelper extends AbstractMultiValueFieldViewHelper
 {
-
-    /**
-     * Initialize
-     * @return void
-     */
-    public function initializeArguments()
+    public function initializeArguments(): void
     {
         parent::initializeArguments();
         $this->overrideArgument(
@@ -75,15 +71,11 @@ class SelectViewHelper extends AbstractMultiValueFieldViewHelper
         );
     }
 
-    /**
-     * @param RenderingContextInterface $renderingContext
-     * @param iterable $arguments
-     * @return Select
-     */
-    public static function getComponent(RenderingContextInterface $renderingContext, iterable $arguments)
+    public static function getComponent(RenderingContextInterface $renderingContext, iterable $arguments): Select
     {
+        /** @var array $arguments */
         /** @var Select $component */
-        $component = static::getPreparedComponent('Select', $renderingContext, $arguments);
+        $component = static::getPreparedComponent(Select::class, $renderingContext, $arguments);
         $component->setRenderType($arguments['renderType']);
         $component->setShowIconTable($arguments['showIconTable']);
         return $component;

@@ -27,12 +27,18 @@ class ContentGridForm extends Form
         parent::__construct();
 
         $this->createContainer(Form\Container\Sheet::class, 'grid');
+        /** @var Form\Field\Select $gridMode */
         $gridMode = $this->createField(Form\Field\Select::class, 'gridMode', 'Grid mode');
         $gridModeOptions = [Form\Container\Section::GRID_MODE_ROWS, Form\Container\Section::GRID_MODE_COLUMNS];
         $gridMode->setDefault(Form\Container\Section::GRID_MODE_ROWS);
         $gridMode->setItems(array_combine($gridModeOptions, $gridModeOptions));
         /** @var Form\Field\Input $autoColumns */
-        $autoColumns = $this->createField(Form\Field\Input::class, 'autoColumns', 'Automatic content columns (adds automatic columns AFTER those defined below, until this number of total columns is reached)');
+        $autoColumns = $this->createField(
+            Form\Field\Input::class,
+            'autoColumns',
+            'Automatic content columns (adds automatic columns AFTER those defined below, until this number of '
+            . 'total columns is reached)'
+        );
         $autoColumns->setValidate('trim,int');
         $autoColumns->setSize(3);
         $section = $this->createContainer(Form\Container\Section::class, 'columns', 'Manual content columns');

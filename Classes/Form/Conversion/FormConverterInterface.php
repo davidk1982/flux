@@ -6,5 +6,8 @@ use FluidTYPO3\Flux\Form;
 
 interface FormConverterInterface
 {
+    /**
+     * @return mixed
+     */
     public function convertFormAndGrid(Form $form, Form\Container\Grid $grid, array $configuration);
 }

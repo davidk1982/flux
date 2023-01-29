@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\ViewHelpers\Field\Tree;
 
 /*
@@ -20,12 +21,7 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
  */
 class CategoryViewHelper extends TreeViewHelper
 {
-
-    /**
-     * Initialize
-     * @return void
-     */
-    public function initializeArguments()
+    public function initializeArguments(): void
     {
         parent::initializeArguments();
         $this->overrideArgument(
@@ -62,13 +58,9 @@ class CategoryViewHelper extends TreeViewHelper
         $this->overrideArgument('expandAll', 'boolean', 'If TRUE, expands all branches', false, true);
     }
 
-    /**
-     * @param RenderingContextInterface $renderingContext
-     * @param iterable $arguments
-     * @return Tree
-     */
-    public static function getComponent(RenderingContextInterface $renderingContext, iterable $arguments)
+    public static function getComponent(RenderingContextInterface $renderingContext, iterable $arguments): Tree
     {
+        /** @var array $arguments */
         $tree = parent::getComponent($renderingContext, $arguments);
         if (null === $arguments['matchFields']) {
             $tree->setMatchFields([

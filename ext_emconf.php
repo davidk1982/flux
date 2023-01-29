@@ -4,7 +4,7 @@ $EM_CONF['flux'] = array (
   'description' => 'Drop-in page and content templates with nested content feature. Provides multiple condensed integration APIs to use advanced TYPO3 features with little effort.',
   'category' => 'misc',
   'shy' => 0,
-  'version' => '9.6.1',
+  'version' => '9.7.2',
   'dependencies' => 'cms',
   'conflicts' => '',
   'priority' => 'top',
@@ -25,11 +25,13 @@ $EM_CONF['flux'] = array (
   array (
     'depends' => 
     array (
-      'typo3' => '8.7.0-11.5.99',
+      'typo3' => '10.4.0-12.0.99',
       'php' => '7.4.0-8.1.99',
     ),
     'conflicts' => 
     array (
+        'fluidpages' => '',
+        'fluidcontent' => '',
     ),
     'suggests' => 
     array (

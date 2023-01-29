@@ -9,36 +9,39 @@ namespace FluidTYPO3\Flux\Tests\Unit\Integration\HookSubscribers;
  */
 
 use FluidTYPO3\Flux\Core;
+use FluidTYPO3\Flux\Integration\HookSubscribers\Preview;
+use FluidTYPO3\Flux\Integration\PreviewRenderer;
 use FluidTYPO3\Flux\Service\FluxService;
 use FluidTYPO3\Flux\Tests\Fixtures\Classes\DummyConfigurationProvider;
 use FluidTYPO3\Flux\Tests\Fixtures\Data\Records;
 use FluidTYPO3\Flux\Tests\Fixtures\Data\Xml;
 use FluidTYPO3\Flux\Tests\Unit\AbstractTestCase;
-use TYPO3\CMS\Backend\Template\ModuleTemplate;
-use TYPO3\CMS\Core\Page\PageRenderer;
+use TYPO3\CMS\Backend\View\PageLayoutView;
+use TYPO3\CMS\Backend\View\PageLayoutViewDrawItemHookInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Extbase\Configuration\ConfigurationManager;
 
-/**
- * PreviewTest
- */
 class PreviewTest extends AbstractTestCase
 {
-
-    /**
-     * Setup
-     */
-    public function setUp()
+    public function setUp(): void
     {
-        $configurationManager = $this->getMockBuilder(ConfigurationManager::class)->getMock();
-        $fluxService = $this->objectManager->get(FluxService::class);
-        $fluxService->injectConfigurationManager($configurationManager);
-        $tempFiles = (array) glob(GeneralUtility::getFileAbsFileName('typo3temp/flux-preview-*.tmp'));
+        if (!class_exists(PageLayoutViewDrawItemHookInterface::class)) {
+            $this->markTestSkipped('Skipping test with PageLayoutViewDrawItemHookInterface dependency');
+        }
+        $fluxService = $this->getMockBuilder(FluxService::class)
+            ->setMethods(['dummy'])
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        $this->singletonInstances[FluxService::class] = $fluxService;
+
+        $tempFiles = (array) glob('typo3temp/flux-preview-*.tmp');
         foreach ($tempFiles as $tempFile) {
             if (true === file_exists($tempFile)) {
                 unlink($tempFile);
             }
         }
+
+        parent::setUp();
     }
 
     /**
@@ -58,17 +61,23 @@ class PreviewTest extends AbstractTestCase
         Core::unregisterConfigurationProvider(DummyConfigurationProvider::class);
     }
 
-    /**
-     * @test
-     */
-    public function testAttachAssets()
+    public function testDelegatesToPreviewRenderer(): void
     {
-        $pageRenderer = $this->getMockBuilder(PageRenderer::class)->setMethods(['loadRequireJsModule'])->getMock();
-        $pageRenderer->expects($this->atLeastOnce())->method('loadRequireJsModule');
-        $instances = GeneralUtility::getSingletonInstances();
-        GeneralUtility::setSingletonInstance(PageRenderer::class, $pageRenderer);
-        $subject = $this->createInstance();
-        $this->callInaccessibleMethod($subject, 'attachAssets');
-        GeneralUtility::resetSingletonInstances($instances);
+        $renderer = $this->getMockBuilder(PreviewRenderer::class)
+            ->setMethods(['renderPreview'])
+            ->disableOriginalConstructor()
+            ->getMock();
+        $renderer->expects(self::once())->method('renderPreview')->willReturn(['a', 'b', true]);
+        GeneralUtility::addInstance(PreviewRenderer::class, $renderer);
+
+        $subject = new Preview();
+
+        $parentObject = $this->getMockBuilder(PageLayoutView::class)->disableOriginalConstructor()->getMock();
+        $drawItem = false;
+        $headerContent = 'header';
+        $itemContent = 'content';
+        $record = ['uid' => 1];
+
+        $subject->preProcess($parentObject, $drawItem, $headerContent, $itemContent, $record);
     }
 }

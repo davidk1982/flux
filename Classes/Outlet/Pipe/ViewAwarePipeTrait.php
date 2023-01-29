@@ -8,25 +8,32 @@ namespace FluidTYPO3\Flux\Outlet\Pipe;
  * LICENSE.md file that was distributed with this source code.
  */
 
-use TYPO3\CMS\Extbase\Mvc\View\ViewInterface;
+use TYPO3Fluid\Fluid\View\ViewInterface;
 
 /**
  * trait to implement the ViewAwarePipeInterface. must be paired with the ViewAwarePipeInterface to be recognised
  */
 trait ViewAwarePipeTrait
 {
-
     /**
-     * @var ViewInterface
+     * @var ViewInterface|\TYPO3\CMS\Extbase\Mvc\View\ViewInterface
      */
     protected $view;
 
     /**
-     * @param ViewInterface $view
-     * @return void
+     * @param ViewInterface|\TYPO3\CMS\Extbase\Mvc\View\ViewInterface $view
      */
-    public function setView($view)
+    public function setView($view): self
     {
         $this->view = $view;
+        return $this;
+    }
+
+    /**
+     * @return ViewInterface|\TYPO3\CMS\Extbase\Mvc\View\ViewInterface
+     */
+    public function getView()
+    {
+        return $this->view;
     }
 }

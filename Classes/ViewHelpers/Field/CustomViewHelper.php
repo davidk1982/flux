@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\ViewHelpers\Field;
 
 /*
@@ -19,14 +20,9 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
  */
 class CustomViewHelper extends UserFuncViewHelper
 {
-
     const DEFAULT_USERFUNCTION = 'FluidTYPO3\\Flux\\UserFunction\\HtmlOutput->renderField';
 
-    /**
-     * Initialize
-     * @return void
-     */
-    public function initializeArguments()
+    public function initializeArguments(): void
     {
         parent::initializeArguments();
         $this->overrideArgument(
@@ -38,47 +34,40 @@ class CustomViewHelper extends UserFuncViewHelper
         );
     }
 
-    protected function callRenderMethod()
+    protected function callRenderMethod(): string
     {
         $container = static::getContainerFromRenderingContext($this->renderingContext);
-        $component = static::getComponent($this->renderingContext, $this->arguments, $this->buildRenderChildrenClosure());
+        $component = static::getComponent(
+            $this->renderingContext,
+            $this->arguments,
+            $this->buildRenderChildrenClosure()
+        );
         // rendering child nodes with Form's last sheet as active container
         static::setContainerInRenderingContext($this->renderingContext, $component);
         $this->renderChildren();
         static::setContainerInRenderingContext($this->renderingContext, $container);
+        return '';
     }
 
-    /**
-     * @param RenderingContextInterface $renderingContext
-     * @param iterable $arguments
-     * @param \Closure $renderChildrenClosure
-     * @return Custom
-     */
     public static function getComponent(
         RenderingContextInterface $renderingContext,
         iterable $arguments,
-        \Closure $renderChildrenClosure
-    ) {
+        ?\Closure $renderChildrenClosure = null
+    ): Custom {
+        /** @var \Closure $renderChildrenClosure */
         /** @var Custom $component */
-        $component = parent::getPreparedComponent('Custom', $renderingContext, $arguments);
-        $closure = static::buildClosure($renderingContext, $arguments, $renderChildrenClosure);
-        $component->setClosure($closure);
+        $component = parent::getPreparedComponent(Custom::class, $renderingContext, $arguments);
+        $component->setClosure($renderChildrenClosure);
         return $component;
     }
 
-    /**
-     * @param RenderingContextInterface $renderingContext
-     * @param array $arguments
-     * @param \Closure $renderChildrenClosure
-     * @return \Closure
-     */
     protected static function buildClosure(
         RenderingContextInterface $renderingContext,
         iterable $arguments,
         \Closure $renderChildrenClosure
-    ) {
+    ): \Closure {
         $container = $renderingContext->getVariableProvider();
-        $closure = function ($parameters) use ($container, $renderingContext, $renderChildrenClosure) {
+        $closure = function ($parameters) use ($container, $renderChildrenClosure) {
             $backupParameters = null;
             $backupParameters = null;
             if ($container->exists('parameters') === true) {

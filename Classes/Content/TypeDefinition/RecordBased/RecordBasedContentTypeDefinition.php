@@ -9,7 +9,6 @@ namespace FluidTYPO3\Flux\Content\TypeDefinition\RecordBased;
  * LICENSE.md file that was distributed with this source code.
  */
 
-use Doctrine\DBAL\Exception\TableNotFoundException;
 use FluidTYPO3\Flux\Content\RuntimeDefinedContentProvider;
 use FluidTYPO3\Flux\Content\TypeDefinition\FluidRenderingContentTypeDefinitionInterface;
 use FluidTYPO3\Flux\Content\TypeDefinition\SerializeSafeInterface;
@@ -19,11 +18,8 @@ use FluidTYPO3\Flux\Form\Container\Column;
 use FluidTYPO3\Flux\Form\Container\Grid;
 use FluidTYPO3\Flux\Form\Container\Row;
 use FluidTYPO3\Flux\Form\Container\Section;
-use FluidTYPO3\Flux\Utility\ExtensionNamingUtility;
-use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Extbase\Object\ObjectManager;
 
 /**
  * Record-based Content Type Definition
@@ -35,19 +31,10 @@ class RecordBasedContentTypeDefinition implements FluidRenderingContentTypeDefin
 {
     use SerializeSafeTrait;
 
-    protected $record = [];
-
-    protected $contentTypeName = '';
-
-    /**
-     * @var Grid
-     */
-    protected $grid;
-
-    /**
-     * @var iterable
-     */
-    protected static $types = [];
+    protected array $record = [];
+    protected string $contentTypeName = '';
+    protected ?Grid $grid;
+    protected static array $types = [];
 
     public function __construct(array $record)
     {
@@ -55,31 +42,15 @@ class RecordBasedContentTypeDefinition implements FluidRenderingContentTypeDefin
         $this->contentTypeName = $record['content_type'];
     }
 
+    /**
+     * @return RecordBasedContentTypeDefinition[]
+     */
     public static function fetchContentTypes(): iterable
     {
         if (empty(static::$types)) {
-            try {
-                $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('content_types');
-                $typeRecords = $queryBuilder->select(...array_keys($GLOBALS['TCA']['content_types']['columns'] ?? ['*' => '']))
-                    ->from('content_types')
-                    ->where(
-                        $queryBuilder->expr()->eq('deleted', $queryBuilder->createNamedParameter(0, \PDO::PARAM_INT)),
-                        $queryBuilder->expr()->eq('hidden', $queryBuilder->createNamedParameter(0, \PDO::PARAM_INT))
-                    )->execute()
-                    ->fetchAll();
-            } catch (TableNotFoundException $exception) {
-                $typeRecords = [];
-            }
-
-            foreach ($typeRecords as $typeRecord) {
-                $extensionIdentity = $typeRecord['extension_identity'];
-                if (empty($extensionIdentity) || !ExtensionManagementUtility::isLoaded(ExtensionNamingUtility::getExtensionKey($extensionIdentity))) {
-                    $typeRecord['extension_identity'] = 'FluidTYPO3.Builder';
-                }
-
-                $contentType = new RecordBasedContentTypeDefinition($typeRecord);
-                static::$types[$typeRecord['content_type']] = $contentType;
-            }
+            /** @var RecordBasedContentTypeDefinitionRepository $definitionRepository */
+            $definitionRepository = GeneralUtility::makeInstance(RecordBasedContentTypeDefinitionRepository::class);
+            static::$types = $definitionRepository->fetchContentTypeDefinitions();
         }
         return static::$types;
     }
@@ -94,11 +65,17 @@ class RecordBasedContentTypeDefinition implements FluidRenderingContentTypeDefin
         return $this->contentTypeName;
     }
 
+    /**
+     * @codeCoverageIgnore
+     */
     protected function getContentConfiguration(): array
     {
         return (array) GeneralUtility::xml2array($this->record['content_configuration'] ?? '');
     }
 
+    /**
+     * @codeCoverageIgnore
+     */
     protected function getGridConfiguration(): array
     {
         return (array) GeneralUtility::xml2array($this->record['grid'] ?? '');
@@ -108,14 +85,15 @@ class RecordBasedContentTypeDefinition implements FluidRenderingContentTypeDefin
     {
         foreach ($this->getContentConfiguration() as $item) {
             foreach ($item['sheets']['lDEF']['sheets']['el'] ?? [] as $sheetObjectData) {
-                yield $sheetObjectData['sheet']['el']['name']['vDEF'] => 'Sheet: ' . $sheetObjectData['sheet']['el']['label']['vDEF'];
+                yield $sheetObjectData['sheet']['el']['name']['vDEF']
+                    => 'Sheet: ' . $sheetObjectData['sheet']['el']['label']['vDEF'];
             }
         }
     }
 
-    public function getForm(array $record = []): Form\FormInterface
+    public function getForm(array $record = []): Form
     {
-        $instance = GeneralUtility::makeInstance(ObjectManager::class)->get(Form::class);
+        $instance = Form::create();
         $instance->remove('options');
         $instance->setOption(Form::OPTION_ICON, $this->getIconReference());
         $instance->setOption(Form::OPTION_GROUP, 'fluxContent');
@@ -125,9 +103,14 @@ class RecordBasedContentTypeDefinition implements FluidRenderingContentTypeDefin
             foreach ($item['sheets']['lDEF']['sheets'] ?? [] as $sheetObjects) {
                 foreach ($sheetObjects as $sheetData) {
                     $sheetValues = $sheetData['sheet']['el'];
-                    $sheet = $instance->createContainer(Form\Container\Sheet::class, $sheetValues['name']['vDEF'], $sheetValues['label']['vDEF']);
+                    $sheet = $instance->createContainer(
+                        Form\Container\Sheet::class,
+                        $sheetValues['name']['vDEF'],
+                        $sheetValues['label']['vDEF']
+                    );
 
                     foreach ($item[$sheetValues['name']['vDEF']]['lDEF']['fields']['el'] ?? [] as $fieldObject) {
+                        /** @var class-string $fieldType */
                         $fieldType = ucfirst(key($fieldObject));
 
                         $fieldSettings = reset($fieldObject)['el'];
@@ -135,7 +118,9 @@ class RecordBasedContentTypeDefinition implements FluidRenderingContentTypeDefin
                             $fieldSettings[$key] = $value['vDEF'];
                         }
 
-                        $sheet->createField($fieldType, $fieldSettings['name'])->modify($fieldSettings);
+                        /** @var Form\FieldInterface $field */
+                        $field = $sheet->createField($fieldType, $fieldSettings['name']);
+                        $field->modify($fieldSettings);
                     }
                 }
             }
@@ -152,6 +137,8 @@ class RecordBasedContentTypeDefinition implements FluidRenderingContentTypeDefin
         foreach ($this->getGridConfiguration() as $item) {
             $gridMode = $item['grid']['lDEF']['gridMode']['vDEF'] ?? Section::GRID_MODE_ROWS;
             $autoColumns = (int)($item['grid']['lDEF']['autoColumns']['vDEF'] ?? 0);
+
+            /** @var Grid $grid */
             $grid = Grid::create();
 
             $currentNumberOfColumns = 0;
@@ -175,7 +162,7 @@ class RecordBasedContentTypeDefinition implements FluidRenderingContentTypeDefin
                         $name = $columnObject['column']['el']['name']['vDEF'];
                         $label = $columnObject['column']['el']['label']['vDEF'];
                         $column = $row->createContainer(Column::class, $name, $label);
-                        $column->setColumnPosition((int)$columnObject['colPos']['vDEF']);
+                        $column->setColumnPosition((int)$columnObject['column']['el']['colPos']['vDEF']);
 
                         ++$currentNumberOfColumns;
                     }
@@ -228,6 +215,9 @@ class RecordBasedContentTypeDefinition implements FluidRenderingContentTypeDefin
             $columnTemplateChunk = '<flux:content.render area="%d" />' . PHP_EOL;
 
             $grid = $this->getGrid();
+            if (!($grid instanceof Grid)) {
+                return '';
+            }
             $template = '<div class="flux-grid">' . PHP_EOL;
             foreach ($grid->getRows() as $row) {
                 $template .= '<div class="flux-grid-row">' . PHP_EOL;
@@ -242,11 +232,17 @@ class RecordBasedContentTypeDefinition implements FluidRenderingContentTypeDefin
         return $this->record['template_source'];
     }
 
-    protected function createAutomaticGridColumns(Grid $grid, int $currentNumberOfColumns, int $totalNumberOfColumns, string $mode)
-    {
+    protected function createAutomaticGridColumns(
+        Grid $grid,
+        int $currentNumberOfColumns,
+        int $totalNumberOfColumns,
+        string $mode
+    ): void {
         if ($mode === Section::GRID_MODE_ROWS) {
             for ($i = $currentNumberOfColumns; $i < $totalNumberOfColumns; ++$i) {
-                $grid->createContainer(Row::class, 'row' . $i)->createContainer(Column::class, 'content' . $i)->setColumnPosition($i);
+                $grid->createContainer(Row::class, 'row' . $i)
+                    ->createContainer(Column::class, 'content' . $i)
+                    ->setColumnPosition($i);
             }
         } else {
             $row = $grid->createContainer(Row::class, 'row');

@@ -10,6 +10,7 @@ namespace FluidTYPO3\Flux\Content;
  */
 
 use Doctrine\DBAL\DBALException;
+use Doctrine\DBAL\Driver\Exception;
 use FluidTYPO3\Flux\Content\TypeDefinition\ContentTypeDefinitionInterface;
 use FluidTYPO3\Flux\Content\TypeDefinition\FluidFileBased\DropInContentTypeDefinition;
 use FluidTYPO3\Flux\Content\TypeDefinition\FluidFileBased\FluidFileBasedContentTypeDefinition;
@@ -34,14 +35,14 @@ class ContentTypeManager implements SingletonInterface
     const CACHE_TAG = 'content_types';
 
     /**
-     * @var ContentTypeDefinitionInterface[]
+     * @var ContentTypeDefinitionInterface[]|null[]
      */
-    protected $types = [];
+    protected array $types = [];
 
     /**
      * @var string[]
      */
-    protected $typeNames = [];
+    protected array $typeNames = [];
 
     /**
      * @return FluidRenderingContentTypeDefinitionInterface[]
@@ -52,12 +53,14 @@ class ContentTypeManager implements SingletonInterface
         if (empty($types)) {
             try {
                 $types = array_replace(
-                    (array) DropInContentTypeDefinition::fetchContentTypes(),
-                    (array) FluidFileBasedContentTypeDefinition::fetchContentTypes(),
-                    (array) RecordBasedContentTypeDefinition::fetchContentTypes()
+                    $this->fetchDropInContentTypes(),
+                    $this->fetchFileBasedContentTypes(),
+                    $this->fetchRecordBasedContentTypes()
                 );
                 $this->typeNames = array_merge($this->typeNames, array_keys($types));
             } catch (DBALException $error) {
+                // Suppress schema- or connection-related issues
+            } catch (Exception $error) {
                 // Suppress schema- or connection-related issues
             } catch (NoSuchCacheException $error) {
                 // Suppress caches not yet initialized errors
@@ -83,7 +86,8 @@ class ContentTypeManager implements SingletonInterface
 
     public function determineContentTypeForTypeString(string $contentTypeName): ?ContentTypeDefinitionInterface
     {
-        return $this->types[$contentTypeName] ?? ($this->types[$contentTypeName] = $this->loadSingleDefinitionFromCache($contentTypeName));
+        return $this->types[$contentTypeName]
+            ?? ($this->types[$contentTypeName] = $this->loadSingleDefinitionFromCache($contentTypeName));
     }
 
     public function determineContentTypeForRecord(array $record): ?ContentTypeDefinitionInterface
@@ -91,24 +95,54 @@ class ContentTypeManager implements SingletonInterface
         return $this->determineContentTypeForTypeString($record['CType'] ?? $record['content_type'] ?? '');
     }
 
-    protected function loadSingleDefinitionFromCache(string $name): ?ContentTypeDefinitionInterface
-    {
-        try {
-            return $this->getCache()->get(static::CACHE_IDENTIFIER_PREFIX . $name) ?: null;
-        } catch (NoSuchCacheException $error) {
-            return null;
-        }
-    }
-
-    public function regenerate()
+    public function regenerate(): void
     {
         $cache = $this->getCache();
         $cache->set(static::CACHE_IDENTIFIER, $this->fetchContentTypes());
     }
 
+    protected function loadSingleDefinitionFromCache(string $name): ?ContentTypeDefinitionInterface
+    {
+        try {
+            /** @var ContentTypeDefinitionInterface|null $fromCache */
+            $fromCache = $this->getCache()->get(static::CACHE_IDENTIFIER_PREFIX . $name) ?: null;
+            return $fromCache;
+        } catch (NoSuchCacheException $error) {
+            return null;
+        }
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function fetchDropInContentTypes(): array
+    {
+        return (array) DropInContentTypeDefinition::fetchContentTypes();
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function fetchFileBasedContentTypes(): array
+    {
+        return (array) FluidFileBasedContentTypeDefinition::fetchContentTypes();
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function fetchRecordBasedContentTypes(): array
+    {
+        return (array) RecordBasedContentTypeDefinition::fetchContentTypes();
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
     protected function getCache(): FrontendInterface
     {
         try {
+            /** @var CacheManager $cacheManager */
             $cacheManager = GeneralUtility::makeInstance(CacheManager::class);
             return $cacheManager->getCache('flux');
         } catch (NoSuchCacheException $error) {
@@ -116,7 +150,7 @@ class ContentTypeManager implements SingletonInterface
             try {
                 $cache = $cacheManager->getCache('flux');
             } catch (NoSuchCacheException $error) {
-                $cache = $cacheManager->getCache('cache_runtime');
+                $cache = $cacheManager->getCache('runtime');
             }
         }
         return $cache;

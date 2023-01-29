@@ -11,14 +11,12 @@ namespace FluidTYPO3\Flux\Content;
 
 use FluidTYPO3\Flux\Content\TypeDefinition\ContentTypeDefinitionInterface;
 use FluidTYPO3\Flux\Content\TypeDefinition\FluidRenderingContentTypeDefinitionInterface;
+use FluidTYPO3\Flux\Integration\ViewBuilder;
+use FluidTYPO3\Flux\Service\TemplateValidationService;
 use FluidTYPO3\Flux\Utility\ExtensionNamingUtility;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Extbase\Mvc\Controller\ControllerContext;
-use TYPO3\CMS\Extbase\Mvc\Web\Request;
-use TYPO3\CMS\Extbase\Object\ObjectManager;
-use TYPO3\CMS\Fluid\View\TemplateView;
 use TYPO3Fluid\Fluid\Core\Parser\Sequencer;
 use TYPO3Fluid\Fluid\Core\Parser\Source;
 
@@ -36,84 +34,76 @@ class ContentTypeValidator
 {
     public function validateContentTypeRecord(array $parameters): string
     {
-        static $content = '';
-        if (empty($content)) {
-            $objectManager = GeneralUtility::makeInstance(ObjectManager::class);
-            $request = $objectManager->get(Request::class);
-            $context = $objectManager->get(ControllerContext::class);
-            $context->setRequest($request);
-            $view = $objectManager->get(TemplateView::class);
-            $view->getRenderingContext()->setControllerContext($context);
-            $view->getRenderingContext()->getTemplatePaths()->fillDefaultsByPackageName('flux');
-            $view->getRenderingContext()->setControllerName('Content');
+        /** @var ViewBuilder $viewBuilder */
+        $viewBuilder = GeneralUtility::makeInstance(ViewBuilder::class);
+        $view = $viewBuilder->buildTemplateView('FluidTYPO3.Flux', 'Content', 'validation');
 
-            $record = $parameters['row'];
-            $recordIsNew = strncmp((string)$record['uid'], 'NEW', 3) === 0;
+        $record = $parameters['row'];
+        $recordIsNew = strncmp((string)$record['uid'], 'NEW', 3) === 0;
 
-            $view->assign('recordIsNew', $recordIsNew);
+        $view->assign('recordIsNew', $recordIsNew);
 
-            if ($recordIsNew) {
-                return $view->render('validation');
-            }
-
-            $contentType = $objectManager->get(ContentTypeManager::class)->determineContentTypeForTypeString($record['content_type']);
-            if (!$contentType) {
-                $view->assign('recordIsNew', true);
-                return $view->render('validation');
-            }
-
-            $usesTemplateFile = true;
-            if ($contentType instanceof FluidRenderingContentTypeDefinitionInterface) {
-                $usesTemplateFile = $contentType->isUsingTemplateFile() ? file_exists(GeneralUtility::getFileAbsFileName($contentType->getTemplatePathAndFilename())) : false;
-            }
-
-            $view->assignMultiple([
-                'recordIsNew' => $recordIsNew,
-                'contentType' => $contentType,
-                'record' => $record,
-                'usages' => $this->countUsages($contentType),
-                'validation' => [
-                    'extensionInstalled' => $this->validateContextExtensionIsInstalled($contentType),
-                    'extensionMatched' => $this->validateContextMatchesSignature($contentType),
-                    'templateSource' => $this->validateTemplateSource($contentType),
-                    'templateFile' => $usesTemplateFile,
-                    'icon' => !empty($record['icon']) ? file_exists(GeneralUtility::getFileAbsFileName($record['icon'])) : true,
-                ],
-            ]);
-
-            return $view->render('validation');
+        if ($recordIsNew) {
+            return $view->render();
         }
-        return $content;
-    }
 
-    protected function validateTemplateSource(ContentTypeDefinitionInterface $definition): ?string
-    {
-        $parser = GeneralUtility::makeInstance(ObjectManager::class)->get(TemplateView::class)->getRenderingContext()->getTemplateParser();
-        try {
-            if (class_exists(Sequencer::class)) {
-                $parser->parse(new Source($definition->getTemplatesource()));
-            } else {
-                $parser->parse($definition->getTemplateSource());
-            }
-        } catch (\Exception $error) {
-            return $error->getMessage();
+        /** @var ContentTypeManager $contentTypeManager */
+        $contentTypeManager = GeneralUtility::makeInstance(ContentTypeManager::class);
+        $contentType = $contentTypeManager->determineContentTypeForTypeString($record['content_type']);
+        if (!$contentType) {
+            $view->assign('recordIsNew', true);
+            return $view->render();
         }
-        return null;
+
+        $usesTemplateFile = true;
+        if ($contentType instanceof FluidRenderingContentTypeDefinitionInterface) {
+            $usesTemplateFile = $contentType->isUsingTemplateFile()
+                && file_exists($this->resolveAbsolutePathForFilename($contentType->getTemplatePathAndFilename()));
+        }
+
+        $view->assignMultiple([
+            'recordIsNew' => $recordIsNew,
+            'contentType' => $contentType,
+            'record' => $record,
+            'usages' => $this->countUsages($contentType),
+            'validation' => [
+                'extensionInstalled' => $this->validateContextExtensionIsInstalled($contentType),
+                'extensionMatched' => $this->validateContextMatchesSignature($contentType),
+                'templateSource' => $this->getTemplateValidationService()->validateContentDefinition($contentType),
+                'templateFile' => $usesTemplateFile,
+                'icon' => !empty($record['icon'])
+                    && file_exists($this->resolveAbsolutePathForFilename($record['icon'])),
+            ],
+        ]);
+
+        return $view->render();
     }
 
     protected function validateContextMatchesSignature(ContentTypeDefinitionInterface $definition): bool
     {
-        return str_replace('_', '', ExtensionNamingUtility::getExtensionKey($definition->getExtensionIdentity())) === reset(explode('_', $definition->getContentTypeName()));
+        $parts = explode('_', $definition->getContentTypeName());
+        return str_replace(
+            '_',
+            '',
+            ExtensionNamingUtility::getExtensionKey($definition->getExtensionIdentity())
+        ) === reset($parts);
     }
 
     protected function validateContextExtensionIsInstalled(ContentTypeDefinitionInterface $definition): bool
     {
-        return ExtensionManagementUtility::isLoaded(ExtensionNamingUtility::getExtensionKey($definition->getExtensionIdentity()));
+        return ExtensionManagementUtility::isLoaded(
+            ExtensionNamingUtility::getExtensionKey($definition->getExtensionIdentity())
+        );
     }
 
+    /**
+     * @codeCoverageIgnore
+     */
     protected function countUsages(ContentTypeDefinitionInterface $definition): int
     {
-        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tt_content');
+        /** @var ConnectionPool $connectionPool */
+        $connectionPool = GeneralUtility::makeInstance(ConnectionPool::class);
+        $queryBuilder = $connectionPool->getQueryBuilderForTable('tt_content');
         $queryBuilder->select('uid')
             ->from('tt_content')
             ->where(
@@ -122,6 +112,24 @@ class ContentTypeValidator
                     $queryBuilder->createNamedParameter($definition->getContentTypeName(), \PDO::PARAM_STR)
                 )
             );
-        return $queryBuilder->execute()->rowCount();
+        return (integer) $queryBuilder->execute()->rowCount();
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function resolveAbsolutePathForFilename(string $filename): string
+    {
+        return GeneralUtility::getFileAbsFileName($filename);
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    public function getTemplateValidationService(): TemplateValidationService
+    {
+        /** @var TemplateValidationService $templateValidationService */
+        $templateValidationService = GeneralUtility::makeInstance(TemplateValidationService::class);
+        return $templateValidationService;
     }
 }

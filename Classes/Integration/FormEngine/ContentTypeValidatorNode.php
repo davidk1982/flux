@@ -9,17 +9,19 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 class ContentTypeValidatorNode extends AbstractNode implements NodeInterface
 {
-    private $parameters = [];
+    private array $parameters = [];
 
     public function __construct(NodeFactory $nodeFactory, array $data)
     {
         $this->parameters = $data;
     }
 
-    public function render()
+    public function render(): array
     {
         $return = $this->initializeResultArray();
-        $return['html'] = GeneralUtility::makeInstance(ContentTypeValidator::class)->validateContentTypeRecord(
+        /** @var ContentTypeValidator $validator */
+        $validator = GeneralUtility::makeInstance(ContentTypeValidator::class);
+        $return['html'] = $validator->validateContentTypeRecord(
             $this->parameters['parameterArray'] + ['row' => $this->parameters['databaseRow']]
         );
         return $return;

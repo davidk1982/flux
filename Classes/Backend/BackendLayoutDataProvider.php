@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\Backend;
 
 /*
@@ -8,6 +9,7 @@ namespace FluidTYPO3\Flux\Backend;
  * LICENSE.md file that was distributed with this source code.
  */
 
+use FluidTYPO3\Flux\Provider\PageProvider;
 use FluidTYPO3\Flux\Provider\ProviderInterface;
 use FluidTYPO3\Flux\Service\FluxService;
 use FluidTYPO3\Flux\Service\WorkspacesAwareRecordService;
@@ -17,78 +19,27 @@ use TYPO3\CMS\Backend\View\BackendLayout\DataProviderContext;
 use TYPO3\CMS\Backend\View\BackendLayout\DataProviderInterface;
 use TYPO3\CMS\Backend\View\BackendLayout\DefaultDataProvider;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Extbase\Object\ObjectManager;
-use TYPO3\CMS\Extbase\Object\ObjectManagerInterface;
 
-/**
- * Class for backend layouts
- */
 class BackendLayoutDataProvider extends DefaultDataProvider implements DataProviderInterface
 {
+    protected FluxService $configurationService;
+    protected WorkspacesAwareRecordService $recordService;
 
-    /**
-     * @var ObjectManagerInterface
-     */
-    protected $objectManager;
-
-    /**
-     * @var FluxService
-     */
-    protected $configurationService;
-
-    /**
-     * @var WorkspacesAwareRecordService
-     */
-    protected $recordService;
-
-    /**
-     * @param ObjectManagerInterface $objectManager
-     * @return void
-     */
-    public function injectObjectManager(ObjectManagerInterface $objectManager)
+    public function __construct()
     {
-        $this->objectManager = $objectManager;
-    }
+        /** @var FluxService $fluxService */
+        $fluxService = GeneralUtility::makeInstance(FluxService::class);
+        $this->configurationService = $fluxService;
 
-    /**
-     * @param FluxService $configurationService
-     * @return void
-     */
-    public function injectConfigurationService(FluxService $configurationService)
-    {
-        $this->configurationService = $configurationService;
-    }
-
-    /**
-     * @param WorkspacesAwareRecordService $workspacesAwareRecordService
-     * @return void
-     */
-    public function injectWorkspacesAwareRecordService(WorkspacesAwareRecordService $workspacesAwareRecordService)
-    {
+        /** @var WorkspacesAwareRecordService $workspacesAwareRecordService */
+        $workspacesAwareRecordService = GeneralUtility::makeInstance(WorkspacesAwareRecordService::class);
         $this->recordService = $workspacesAwareRecordService;
     }
 
-    /**
-     * Constructor
-     */
-    public function __construct()
-    {
-        $this->objectManager = GeneralUtility::makeInstance(ObjectManager::class);
-        $this->injectConfigurationService($this->objectManager->get(FluxService::class));
-        $this->injectWorkspacesAwareRecordService($this->objectManager->get(WorkspacesAwareRecordService::class));
-    }
-
-    /**
-     * Adds backend layouts to the given backend layout collection.
-     *
-     * @param DataProviderContext $dataProviderContext
-     * @param BackendLayoutCollection $backendLayoutCollection
-     * @return void
-     */
     public function addBackendLayouts(
         DataProviderContext $dataProviderContext,
         BackendLayoutCollection $backendLayoutCollection
-    ) {
+    ): void {
         $backendLayout = $this->getBackendLayout('grid', $dataProviderContext->getPageId());
         if ($backendLayout) {
             $backendLayoutCollection->add($backendLayout);
@@ -99,32 +50,41 @@ class BackendLayoutDataProvider extends DefaultDataProvider implements DataProvi
      * Gets a backend layout by (regular) identifier.
      *
      * @param string $identifier
-     * @param integer $pageUid
-     * @return BackendLayout
+     * @param integer $pageId
      */
-    public function getBackendLayout($identifier, $pageUid)
+    public function getBackendLayout($identifier, $pageId): ?BackendLayout
     {
-        $record = $this->recordService->getSingle('pages', '*', $pageUid);
+        $emptyLayout = $this->createBackendLayoutInstance($identifier, 'Empty', '');
+        $record = $this->recordService->getSingle('pages', '*', $pageId);
         if (null === $record) {
-            return new BackendLayout($identifier, 'Empty', '');
+            return $emptyLayout;
         }
-        $grid = $this->resolveProvider($record)->getGrid($record);
+        $provider = $this->resolveProvider($record);
+        if (!$provider instanceof PageProvider) {
+            return $emptyLayout;
+        }
+        $grid = $provider->getGrid($record);
         return $grid->buildBackendLayout(0);
     }
 
-    /**
-     * @param int $pageUid
-     * @return ProviderInterface
-     */
-    protected function resolveProvider(array $record)
+    protected function resolveProvider(array $record): ?ProviderInterface
     {
         $record = $this->recordService->getSingle('pages', '*', $record['uid']);
 
         // Stop processing if no template configured in rootline
         if (null === $record) {
-            return [];
+            return null;
         }
 
         return $this->configurationService->resolvePageProvider($record);
+    }
+
+    /**
+     * @param string|array $configuration
+     * @codeCoverageIgnore
+     */
+    protected function createBackendLayoutInstance(string $identifier, string $title, $configuration): BackendLayout
+    {
+        return new BackendLayout($identifier, 'Empty', '');
     }
 }

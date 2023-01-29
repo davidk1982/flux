@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\Form\Container;
 
 /*
@@ -11,8 +12,6 @@ namespace FluidTYPO3\Flux\Form\Container;
 use FluidTYPO3\Flux\Form\AbstractFormContainer;
 use FluidTYPO3\Flux\Form\ContainerInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Extbase\Object\ObjectManager;
-use TYPO3\CMS\Extbase\Object\ObjectManagerInterface;
 use TYPO3\CMS\Extbase\Reflection\ObjectAccess;
 
 /**
@@ -34,18 +33,12 @@ class Section extends AbstractFormContainer implements ContainerInterface
     const GRID_MODE_ROWS = 'rows';
     const GRID_MODE_COLUMNS = 'columns';
 
-    protected $gridMode = self::GRID_MODE_ROWS;
+    protected string $gridMode = self::GRID_MODE_ROWS;
 
-    /**
-     * @param array $settings
-     * @return Section
-     */
-    public static function create(array $settings = [])
+    public static function create(array $settings = []): self
     {
-        /** @var ObjectManagerInterface $objectManager */
-        $objectManager = GeneralUtility::makeInstance(ObjectManager::class);
         /** @var Section */
-        $section = $objectManager->get(Section::class);
+        $section = GeneralUtility::makeInstance(Section::class);
         foreach ($settings as $settingName => $settingValue) {
             $setterMethodName = 'set' . ucfirst($settingName);
             if (true === method_exists($section, $setterMethodName)) {
@@ -64,35 +57,28 @@ class Section extends AbstractFormContainer implements ContainerInterface
         return $section;
     }
 
-    /**
-     * @return string
-     */
-    public function getGridMode()
+    public function getGridMode(): string
     {
         return $this->gridMode;
     }
 
-    /**
-     * @param string $gridMode
-     */
-    public function setGridMode($gridMode)
+    public function setGridMode(string $gridMode): self
     {
         $this->gridMode = $gridMode;
+        return $this;
     }
 
-    public function getContentContainer()
+    public function getContentContainer(): ?SectionObject
     {
         foreach ($this->children as $child) {
-            if ($child->isContentContainer()) {
+            if ($child instanceof SectionObject && $child->isContentContainer()) {
                 return $child;
             }
         }
+        return null;
     }
 
-    /**
-     * @return array
-     */
-    public function build()
+    public function build(): array
     {
         $structureArray = [
             'type' => 'array',

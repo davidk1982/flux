@@ -8,47 +8,58 @@ namespace FluidTYPO3\Flux\Tests\Unit\Integration\HookSubscribers;
  * LICENSE.md file that was distributed with this source code.
  */
 
+use FluidTYPO3\Flux\Integration\FlexFormBuilder;
 use FluidTYPO3\Flux\Integration\HookSubscribers\DynamicFlexForm;
 use FluidTYPO3\Flux\Tests\Unit\AbstractTestCase;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 /**
  * DynamicFlexFormTest
  */
 class DynamicFlexFormTest extends AbstractTestCase
 {
-    /**
-     * @return void
-     */
-    public function testReturnsEmptyDataStructureIdentifierForNonMatchingTableAndField()
+    protected ?FlexFormBuilder $flexFormBuilder = null;
+
+    protected function setUp(): void
     {
-        $subject = $this->objectManager->get(DynamicFlexForm::class);
-        $result = $subject->getDataStructureIdentifierPreProcess(['foo' => 'bar'], 'sometable', 'somefield', ['uid' => 123]);
-        $this->assertSame([], $result);
+        $this->flexFormBuilder = $this->getMockBuilder(FlexFormBuilder::class)
+            ->setMethods(['resolveDataStructureIdentifier', 'parseDataStructureByIdentifier'])
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        GeneralUtility::addInstance(FlexFormBuilder::class, $this->flexFormBuilder);
+
+        parent::setUp();
     }
 
-    /**
-     * @param array $identifier
-     * @dataProvider getEmptyDataStructureIdentifierTestValues
-     */
-    public function testReturnsEmptyDataStructureForIdentifier(array $identifier)
+    public function testCreatesInstancesInConstructor(): void
     {
-        $subject = $this->objectManager->get(DynamicFlexForm::class);
-        $result = $subject->parseDataStructureByIdentifierPreProcess($identifier);
-        $this->assertSame([], $result);
+        $subject = new DynamicFlexForm();
+        self::assertInstanceOf(
+            FlexFormBuilder::class,
+            $this->getInaccessiblePropertyValue($subject, 'flexFormBuilder')
+        );
     }
 
-    /**
-     * @return array
-     */
-    public function getEmptyDataStructureIdentifierTestValues()
+    public function testGetDataStructureIdentifierPreProcessDelegatesToFlexFormBuilder(): void
     {
-        return [
-            [
-                ['type' => 'unsupported']
-            ],
-            [
-                ['type' => 'flux', 'record' => null]
-            ],
-        ];
+        $GLOBALS['TCA']['table']['columns']['field']['config'] = [];
+        $subject = $this->getMockBuilder(DynamicFlexForm::class)
+            ->setMethods(['getDataStructureIdentifier'])
+            ->getMock();
+        $subject->method('getDataStructureIdentifier')->willReturn('{"foo": "bar"}');
+        $this->flexFormBuilder->method('resolveDataStructureIdentifier')
+            ->with()
+            ->willReturn(['foo' => 'bar']);
+        $output = $subject->getDataStructureIdentifierPreProcess([], 'table', 'field', ['uid' => 1]);
+        self::assertSame(['foo' => 'bar'], $output);
+    }
+
+    public function testParseDataStructureByIdentifierPreProcessDelegatesToFlexFormBuilder(): void
+    {
+        $identifier = ['foo' => 'bar'];
+        $subject = new DynamicFlexForm();
+        $this->flexFormBuilder->expects(self::once())->method('parseDataStructureByIdentifier')->with($identifier);
+        $subject->parseDataStructureByIdentifierPreProcess($identifier);
     }
 }

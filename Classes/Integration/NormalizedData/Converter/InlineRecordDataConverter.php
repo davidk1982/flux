@@ -1,34 +1,19 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\Integration\NormalizedData\Converter;
 
 use TYPO3\CMS\Core\Configuration\FlexForm\FlexFormTools;
+use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Database\Query\QueryBuilder;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
-/**
- * Class FlexFormConverter
- */
 class InlineRecordDataConverter implements ConverterInterface
 {
-    /**
-     * @var string
-     */
-    protected $table;
-
-    /**
-     * @var string
-     */
-    protected $field;
-
-    /**
-     * @var array
-     */
-    protected $record;
-
-    /**
-     * @var array
-     */
-    protected $original = [];
+    protected string $table;
+    protected string $field;
+    protected array $record;
+    protected array $original = [];
 
     /**
      * Constructor to receive all required parameters.
@@ -42,15 +27,12 @@ class InlineRecordDataConverter implements ConverterInterface
         $this->table = $table;
         $this->field = $field;
         $this->record = $record;
-        $this->original = $GLOBALS['TCA'][$table]['columns'][$field];
+        $this->original = $GLOBALS['TCA'][$table]['columns'][$field] ?? [];
     }
 
     /**
      * Modify the input FormEngine structure, returning
      * the modified array.
-     *
-     * @param array $structure
-     * @return array
      */
     public function convertStructure(array $structure): array
     {
@@ -59,16 +41,14 @@ class InlineRecordDataConverter implements ConverterInterface
             return $structure;
         }
         $this->synchroniseConfigurationRecords($source);
-        $structure['processedTca']['columns'][$this->field]['config'] = $structure['processedTca']['columns'][$this->field . '_values']['config'];
+        $columns = &$structure['processedTca']['columns'];
+        $columnms[$this->field]['config'] = $columns[$this->field . '_values']['config'];
         return $structure;
     }
 
     /**
      * Converts traditional FlexForm array data by merging in
      * the data coming from IRRE records.
-     *
-     * @param array $data
-     * @return array|\ArrayAccess
      */
     public function convertData(array $data): array
     {
@@ -85,9 +65,6 @@ class InlineRecordDataConverter implements ConverterInterface
      * now has a UID value. Uses the form structure defined
      * in $dataSource (and creates records with default
      * values those were if specified in data source).
-     *
-     * @param array $dataSource
-     * @return void
      */
     protected function synchroniseConfigurationRecords(array $dataSource): void
     {
@@ -96,14 +73,14 @@ class InlineRecordDataConverter implements ConverterInterface
 
             if (empty($sheetData)) {
                 $label = $sheetConfiguration['ROOT']['TCEforms']['sheetTitle'];
-                $sheetData = array(
+                $sheetData = [
                     'pid' => $this->record['pid'],
                     'name' => $sheetName,
                     'sheet_label' => empty($label) ? $sheetName : $label,
                     'source_table' => $this->table,
                     'source_field' => $this->field,
                     'source_uid' => $this->record['uid']
-                );
+                ];
                 $sheetData['uid'] = $this->insertSheetData($sheetData);
             }
             $sheetUid = (int) $sheetData['uid'];
@@ -145,7 +122,13 @@ class InlineRecordDataConverter implements ConverterInterface
 
     protected function assertArrayHasKey(array $array, string $path): bool
     {
-        $segments = GeneralUtility::trimExplode('.', $path);
+        if (empty($array)) {
+            return false;
+        }
+        $segments = GeneralUtility::trimExplode('.', $path, true);
+        if (count($segments) === 0) {
+            return false;
+        }
         $lastSegment = array_pop($segments);
         foreach ($segments as $segment) {
             $array = $array[$segment];
@@ -157,16 +140,19 @@ class InlineRecordDataConverter implements ConverterInterface
      * Resolves a data source definition (TCEforms array)
      * based on the properties of this converter instance
      * and the *original* TCA of the source record field.
-     *
-     * @param array $structure
-     * @return array|null
      */
     protected function resolveDataSourceDefinition(array $structure): ?array
     {
+        /** @var FlexFormTools $flexFormTools */
         $flexFormTools = GeneralUtility::makeInstance(FlexFormTools::class);
         $config = $structure['processedTca']['columns'][$this->field]['config'];
         try {
-            $identifier = $flexFormTools->getDataStructureIdentifier($config, $this->table, $this->field, $this->record);
+            $identifier = $flexFormTools->getDataStructureIdentifier(
+                $config,
+                $this->table,
+                $this->field,
+                $this->record
+            );
             return $flexFormTools->parseDataStructureByIdentifier($identifier);
         } catch (\RuntimeException $exception) {
         }
@@ -174,78 +160,119 @@ class InlineRecordDataConverter implements ConverterInterface
     }
 
     /**
-     * @param array $data
-     * @param string $name
      * @param mixed $value
-     * @return void
      */
-    protected function assignVariableByDottedPath(array &$data, string $name, $value): void
+    protected function assignVariableByDottedPath(array $data, string $name, $value): array
     {
-        if (!strpos($name, '.')) {
-            $data[$name] = $value;
-        } else {
-            $assignIn = &$data;
-            $segments = explode('.', $name);
-            $last = array_pop($segments);
-            foreach ($segments as $segment) {
-                if (!array_key_exists($segment, $assignIn)) {
-                    $assignIn[$segment] = [];
-                }
-                $assignIn = &$assignIn[$segment];
+        $assignIn = &$data;
+        $segments = GeneralUtility::trimExplode('.', $name, true);
+        $last = array_pop($segments);
+        foreach ($segments as $segment) {
+            if (!array_key_exists($segment, $assignIn)) {
+                $assignIn[$segment] = [];
             }
-            $assignIn[$last] = $value;
+            $assignIn = &$assignIn[$segment];
         }
+        $assignIn[$last] = $value;
+        return $data;
     }
 
+    /**
+     * @codeCoverageIgnore
+     */
     protected function updateFieldData(int $sheetUid, string $fieldName, array $fieldData): void
     {
-        $connection = GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('flux_field');
+        $connection = $this->createConnectionForTable('flux_field');
         $connection->update('flux_field', $fieldData, ['sheet' => $sheetUid, 'field_name' => $fieldName]);
     }
 
+    /**
+     * @codeCoverageIgnore
+     */
     protected function insertFieldData(array $fieldData): int
     {
-        $connection = GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('flux_field');
+        $connection = $this->createConnectionForTable('flux_field');
         $queryBuilder = $connection->createQueryBuilder();
         $queryBuilder->insert('flux_field')->values($fieldData)->execute();
         return (int) $connection->lastInsertId('flux_field');
     }
 
+    /**
+     * @codeCoverageIgnore
+     */
     protected function insertSheetData(array $sheetData): int
     {
-        $connection = GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('flux_sheet');
+        $connection = $this->createConnectionForTable('flux_sheet');
         $queryBuilder = $connection->createQueryBuilder();
         $queryBuilder->insert('flux_sheet')->values($sheetData)->execute();
         return (int) $connection->lastInsertId('flux_sheet');
     }
 
+    /**
+     * @codeCoverageIgnore
+     */
     protected function fetchFieldData(int $uid): array
     {
         $settings = [];
-        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('flux_field');
+        $queryBuilder = $this->createQueryBuilderForTable('flux_field');
+        /** @var array[] $result */
         $result = $queryBuilder->select('uid', 'field_name', 'field_value')->from('flux_field')->where(
             $queryBuilder->expr()->eq('sheet', $queryBuilder->createNamedParameter($uid, \PDO::PARAM_INT))
         )->execute()->fetchAllAssociative();
         foreach ($result as $fieldRecord) {
-            $this->assignVariableByDottedPath($settings, $fieldRecord['field_name'], $fieldRecord['field_value']);
+            $settings = $this->assignVariableByDottedPath(
+                $settings,
+                $fieldRecord['field_name'],
+                $fieldRecord['field_value']
+            );
         }
         return $settings;
     }
 
+    /**
+     * @codeCoverageIgnore
+     */
     protected function fetchConfigurationRecords(): array
     {
-        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('flux_sheet');
+        $queryBuilder = $this->createQueryBuilderForTable('flux_sheet');
         return $queryBuilder->select('*')->from('flux_sheet')->where(
-            $queryBuilder->expr()->eq('source_table', $queryBuilder->createNamedParameter($this->table, \PDO::PARAM_STR)),
-            $queryBuilder->expr()->eq('source_field', $queryBuilder->createNamedParameter($this->field, \PDO::PARAM_STR)),
+            $queryBuilder->expr()->eq(
+                'source_table',
+                $queryBuilder->createNamedParameter($this->table, \PDO::PARAM_STR)
+            ),
+            $queryBuilder->expr()->eq(
+                'source_field',
+                $queryBuilder->createNamedParameter($this->field, \PDO::PARAM_STR)
+            ),
         )->execute()->fetchAllAssociative();
     }
 
+    /**
+     * @codeCoverageIgnore
+     */
     protected function fetchSheetRecord(string $sheetName): ?array
     {
-        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('flux_sheet');
+        $queryBuilder = $this->createQueryBuilderForTable('flux_sheet');
         return $queryBuilder->select('uid', 'name')->from('flux_sheet')->where(
             $queryBuilder->expr()->eq('name', $queryBuilder->createNamedParameter($sheetName, \PDO::PARAM_STR))
         )->execute()->fetchAssociative() ?: null;
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function createConnectionForTable(string $table): Connection
+    {
+        /** @var ConnectionPool $connectionPool */
+        $connectionPool = GeneralUtility::makeInstance(ConnectionPool::class);
+        return $connectionPool->getConnectionForTable($table);
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function createQueryBuilderForTable(string $table): QueryBuilder
+    {
+        return $this->createConnectionForTable($table)->createQueryBuilder();
     }
 }

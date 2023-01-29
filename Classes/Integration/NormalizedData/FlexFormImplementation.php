@@ -1,16 +1,20 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\Integration\NormalizedData;
 
-use FluidTYPO3\Flux\Integration\NormalizedData\Converter\InlineRecordDataConverter;
 use FluidTYPO3\Flux\Integration\NormalizedData\Converter\ConverterInterface;
+use FluidTYPO3\Flux\Integration\NormalizedData\Converter\InlineRecordDataConverter;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 class FlexFormImplementation extends AbstractImplementation implements ImplementationInterface
 {
-    protected static $registrations = [];
+    protected static array $registrations = [];
 
-    public static function registerForTableAndField(string $table, string $field, ?\Closure $additionalConditionChecker = null): void
-    {
+    public static function registerForTableAndField(
+        string $table,
+        string $field,
+        ?\Closure $additionalConditionChecker = null
+    ): void {
         if (!isset(static::$registrations[$table])) {
             static::$registrations[$table] = [];
         }
@@ -62,10 +66,6 @@ class FlexFormImplementation extends AbstractImplementation implements Implement
      * to the table and field provided. Each implementation
      * can then allow configuring whether or not it should
      * apply to a given table/field in any way desired.
-     *
-     * @param string $table
-     * @param string|null $field
-     * @return boolean
      */
     public function appliesToTableField(string $table, ?string $field): bool
     {
@@ -80,9 +80,6 @@ class FlexFormImplementation extends AbstractImplementation implements Implement
      * to the table provided. Each implementation can then
      * allow configuring whether or not it should apply to
      * a given table in any way desired.
-     *
-     * @param string $table
-     * @return boolean
      */
     public function appliesToTable(string $table): bool
     {
@@ -95,14 +92,11 @@ class FlexFormImplementation extends AbstractImplementation implements Implement
      * field and record as input parameters, allowing an
      * Implementation to return any number of different
      * Converters based on these identifying values.
-     *
-     * @param string $table
-     * @param string $field
-     * @param array $record
-     * @return ConverterInterface
      */
     public function getConverterForTableFieldAndRecord(string $table, string $field, array $record): ConverterInterface
     {
-        return GeneralUtility::makeInstance(InlineRecordDataConverter::class, $table, $field, $record);
+        /** @var InlineRecordDataConverter $converter */
+        $converter = GeneralUtility::makeInstance(InlineRecordDataConverter::class, $table, $field, $record);
+        return $converter;
     }
 }

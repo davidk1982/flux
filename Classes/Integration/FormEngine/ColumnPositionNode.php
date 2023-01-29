@@ -13,22 +13,21 @@ use TYPO3\CMS\Backend\Form\NodeFactory;
 use TYPO3\CMS\Backend\Form\NodeInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
-/**
- * ColumnPosition
- */
 class ColumnPositionNode extends AbstractNode implements NodeInterface
 {
-    private $parameters = [];
+    private array $parameters = [];
 
     public function __construct(NodeFactory $nodeFactory, array $data)
     {
         $this->parameters = $data;
     }
 
-    public function render()
+    public function render(): array
     {
         $return = $this->initializeResultArray();
-        $return['html'] = GeneralUtility::makeInstance(UserFunctions::class)->renderColumnPositionField($this->parameters['parameterArray']);
+        /** @var UserFunctions $userFunctions */
+        $userFunctions = GeneralUtility::makeInstance(UserFunctions::class);
+        $return['html'] = $userFunctions->renderColumnPositionField($this->parameters['parameterArray']);
         return $return;
     }
 }

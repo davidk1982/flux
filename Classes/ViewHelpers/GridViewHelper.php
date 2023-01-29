@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\ViewHelpers;
 
 /*
@@ -39,12 +40,7 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
  */
 class GridViewHelper extends AbstractFormViewHelper
 {
-
-    /**
-     * Initialize
-     * @return void
-     */
-    public function initializeArguments()
+    public function initializeArguments(): void
     {
         $this->registerArgument('name', 'string', 'Optional name of this grid - defaults to "grid"', false, 'grid');
         $this->registerArgument(
@@ -68,14 +64,14 @@ class GridViewHelper extends AbstractFormViewHelper
         );
     }
 
-    protected function callRenderMethod()
+    protected function callRenderMethod(): string
     {
         $container = static::getContainerFromRenderingContext($this->renderingContext);
         $viewHelperVariableContainer = $this->renderingContext->getViewHelperVariableContainer();
-        $extensionName = $container->getExtensionName() ?? static::getExtensionNameFromRenderingContextOrArguments($this->renderingContext, $this->arguments);
+        $extensionName = self::resolveExtensionName($this->renderingContext, $this->arguments);
 
         $grid = static::getGridFromRenderingContext($this->renderingContext, $this->arguments['name']);
-        $grid->setLabel($this->arguments['label']);
+        $grid->setLabel($this->arguments['label'] ?? null);
         $grid->setVariables($this->arguments['variables']);
         $grid->setExtensionName($extensionName);
 
@@ -86,25 +82,20 @@ class GridViewHelper extends AbstractFormViewHelper
 
         $viewHelperVariableContainer->remove(static::SCOPE, static::SCOPE_VARIABLE_EXTENSIONNAME);
         static::setContainerInRenderingContext($this->renderingContext, $container);
+        return '';
     }
 
-    /**
-     * @param array $arguments
-     * @param \Closure $renderChildrenClosure
-     * @param RenderingContextInterface $renderingContext
-     * @return void
-     */
     public static function renderStatic(
         array $arguments,
         \Closure $renderChildrenClosure,
         RenderingContextInterface $renderingContext
-    ) {
+    ): string {
         $container = static::getContainerFromRenderingContext($renderingContext);
-        $extensionName = $container->getExtensionName() ?? static::getExtensionNameFromRenderingContextOrArguments($renderingContext, $arguments);
         $viewHelperVariableContainer = $renderingContext->getViewHelperVariableContainer();
+        $extensionName = self::resolveExtensionName($renderingContext, $arguments);
 
         $grid = static::getGridFromRenderingContext($renderingContext, $arguments['name']);
-        $grid->setLabel($arguments['label']);
+        $grid->setLabel($arguments['label'] ?? null);
         $grid->setVariables($arguments['variables']);
         $grid->setExtensionName($extensionName);
 
@@ -115,5 +106,13 @@ class GridViewHelper extends AbstractFormViewHelper
 
         $viewHelperVariableContainer->remove(static::SCOPE, static::SCOPE_VARIABLE_EXTENSIONNAME);
         static::setContainerInRenderingContext($renderingContext, $container);
+        return '';
+    }
+
+    private static function resolveExtensionName(RenderingContextInterface $renderingContext, array $arguments): string
+    {
+        $container = static::getContainerFromRenderingContext($renderingContext);
+        return $container->getExtensionName()
+            ?? static::getExtensionNameFromRenderingContextOrArguments($renderingContext, $arguments);
     }
 }

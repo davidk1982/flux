@@ -15,7 +15,6 @@ use FluidTYPO3\Flux\Provider\Provider;
 use FluidTYPO3\Flux\Provider\ProviderResolver;
 use FluidTYPO3\Flux\Utility\ExtensionNamingUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Extbase\Object\ObjectManager;
 
 /**
  * Fluid File-based Content Type Definition
@@ -25,10 +24,10 @@ use TYPO3\CMS\Extbase\Object\ObjectManager;
  */
 class FluidFileBasedContentTypeDefinition implements FluidRenderingContentTypeDefinitionInterface
 {
-    protected $extensionIdentity = '';
-    protected $basePath = '';
-    protected $relativeFilePath = '';
-    protected $providerClassName = Provider::class;
+    protected string $extensionIdentity = '';
+    protected string $basePath = '';
+    protected string $relativeFilePath = '';
+    protected string $providerClassName = Provider::class;
 
     /**
      * Constructs a Fluid file-based content type definition
@@ -41,7 +40,7 @@ class FluidFileBasedContentTypeDefinition implements FluidRenderingContentTypeDe
      * @param string $extensionIdentity The VendorName.ExtensionName identity of the extension that contains the file
      * @param string $basePath Absolute path, or EXT:... path to location of template file
      * @param string $relativeFilePath Path of file relative to $basePath, without leading slash
-     * @param string $providerClassName Class name of a Flux ProviderInterface implementation that handles the content type
+     * @param string $providerClassName Class name of a Flux ProviderInterface implementation that handles the CType
      */
     public function __construct(
         string $extensionIdentity,
@@ -55,22 +54,39 @@ class FluidFileBasedContentTypeDefinition implements FluidRenderingContentTypeDe
         $this->providerClassName = $providerClassName;
     }
 
-    public function getForm(array $record = []): Form\FormInterface
+    public function getForm(array $record = []): Form
     {
-        return GeneralUtility::makeInstance(ObjectManager::class)->get(ProviderResolver::class)->resolvePrimaryConfigurationProvider(
+        /** @var ProviderResolver $providerResolver */
+        $providerResolver = GeneralUtility::makeInstance(ProviderResolver::class);
+        $provider = $providerResolver->resolvePrimaryConfigurationProvider(
             'tt_content',
             'pi_flexform',
             $record
-        )->getForm($record);
+        );
+        /** @var Form $defaultForm */
+        $defaultForm = Form::create();
+
+        if ($provider === null) {
+            return $defaultForm;
+        }
+        return $provider->getForm($record) ?? $defaultForm;
     }
 
     public function getGrid(array $record = []): Form\Container\Grid
     {
-        return GeneralUtility::makeInstance(ObjectManager::class)->get(ProviderResolver::class)->resolvePrimaryConfigurationProvider(
+        /** @var ProviderResolver $providerResolver */
+        $providerResolver = GeneralUtility::makeInstance(ProviderResolver::class);
+        $provider = $providerResolver->resolvePrimaryConfigurationProvider(
             'tt_content',
             'pi_flexform',
             $record
-        )->getGrid($record);
+        );
+        if ($provider === null) {
+            /** @var Form\Container\Grid $grid */
+            $grid = Form\Container\Grid::create();
+            return $grid;
+        }
+        return $provider->getGrid($record);
     }
 
     public static function fetchContentTypes(): iterable

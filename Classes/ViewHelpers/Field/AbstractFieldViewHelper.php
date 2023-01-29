@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\ViewHelpers\Field;
 
 /*
@@ -8,7 +9,7 @@ namespace FluidTYPO3\Flux\ViewHelpers\Field;
  * LICENSE.md file that was distributed with this source code.
  */
 
-use FluidTYPO3\Flux\Form\FieldInterface;
+use FluidTYPO3\Flux\Form\FormInterface;
 use FluidTYPO3\Flux\ViewHelpers\AbstractFormViewHelper;
 use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
 
@@ -19,11 +20,7 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
  */
 abstract class AbstractFieldViewHelper extends AbstractFormViewHelper
 {
-    /**
-     * Initialize arguments
-     * @return void
-     */
-    public function initializeArguments()
+    public function initializeArguments(): void
     {
         $this->registerArgument('name', 'string', 'Name of the attribute, FlexForm XML-valid tag name string', true);
         $this->registerArgument(
@@ -119,13 +116,16 @@ abstract class AbstractFieldViewHelper extends AbstractFormViewHelper
     }
 
     /**
-     * @param string $type
-     * @param RenderingContextInterface $renderingContext
-     * @param iterable $arguments
-     * @return FieldInterface
+     * @template T
+     * @param class-string<T> $type
+     * @return T&FormInterface
      */
-    protected static function getPreparedComponent($type, RenderingContextInterface $renderingContext, iterable $arguments)
-    {
+    protected static function getPreparedComponent(
+        $type,
+        RenderingContextInterface $renderingContext,
+        iterable $arguments
+    ): FormInterface {
+        /** @var array $arguments */
         $component = static::getContainerFromRenderingContext($renderingContext)
             ->createField($type, $arguments['name'], $arguments['label']);
         $component->setConfig((array)$arguments['config']);

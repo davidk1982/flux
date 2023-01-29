@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\ViewHelpers\Field;
 
 /*
@@ -16,11 +17,7 @@ namespace FluidTYPO3\Flux\ViewHelpers\Field;
  */
 class InlineViewHelper extends AbstractInlineFieldViewHelper
 {
-
-    /**
-     * @return void
-     */
-    public function initializeArguments()
+    public function initializeArguments(): void
     {
         parent::initializeArguments();
     }

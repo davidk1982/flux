@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\Form\Wizard;
 
 /*
@@ -20,41 +21,20 @@ use FluidTYPO3\Flux\Form\AbstractWizard;
  */
 class Select extends AbstractWizard
 {
-
-    /**
-     * @var string
-     */
-    protected $name = 'select';
-
-    /**
-     * @var string
-     */
-    protected $type = 'select';
-
-    /**
-     * @var string
-     */
-    protected $icon = 'list.gif';
-
-    /**
-     * @var string
-     */
-    protected $mode = 'substitution';
+    protected ?string $name = 'select';
+    protected ?string $type = 'select';
+    protected ?string $icon = 'list.gif';
+    protected string $mode = 'substitution';
 
     /**
      * Comma-separated, comma-and-semicolon-separated or array
      * list of possible values
      *
-     * @var mixed
+     * @var \Traversable|string|null
      */
     protected $items;
 
-    /**
-     * Build the configuration array
-     *
-     * @return array
-     */
-    public function buildConfiguration()
+    public function buildConfiguration(): array
     {
         return [
             'mode' => $this->getMode(),
@@ -64,42 +44,35 @@ class Select extends AbstractWizard
 
     /**
      * Builds an array of selector options based on a type of string
-     *
-     * @param string $itemsString
-     * @return array
      */
-    protected function buildItems($itemsString)
+    protected function buildItems(string $itemsString): array
     {
         $itemsString = trim($itemsString, ',');
         if (strpos($itemsString, ',') && strpos($itemsString, ';')) {
             $return = [];
             $items = explode(',', $itemsString);
             foreach ($items as $itemPair) {
-                $item = explode(';', $itemPair);
+                $item = strpos($itemPair, ';') !== false ? explode(';', $itemPair) : [$itemPair, $itemPair];
                 $return[$item[0]] = $item[1];
             }
             return $return;
         } elseif (strpos($itemsString, ',')) {
             $items = explode(',', $itemsString);
             return array_combine($items, $items);
-        } else {
-            return [$itemsString => $itemsString];
         }
+        return [$itemsString => $itemsString];
     }
 
-    /**
-     * @return string
-     */
-    public function getName()
+    public function getName(): string
     {
         if (null !== $this->getParent()) {
             return $this->getParent()->getName() . '_' . $this->name;
         }
-        return $this->name;
+        return $this->name ?? 'select';
     }
 
     /**
-     * @return string
+     * @return array
      */
     public function getFormattedItems()
     {
@@ -110,11 +83,11 @@ class Select extends AbstractWizard
         if (true === is_array($items)) {
             return $items;
         }
-        return $this->buildItems($items);
+        return $this->buildItems((string) $items);
     }
 
     /**
-     * @param mixed $items
+     * @param \Traversable|string|null $items
      * @return Select
      */
     public function setItems($items)
@@ -124,7 +97,7 @@ class Select extends AbstractWizard
     }
 
     /**
-     * @return mixed
+     * @return \Traversable|string|null
      */
     public function getItems()
     {

@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\ViewHelpers\Form\Object;
 
 /*
@@ -33,7 +34,7 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
  * Example
  * -------
  *
- *       <flux:form id="sectionobjectasmanualgrid" options="{static: 1}" extensionName="FluidTYPO3.TestProviderExtension">
+ *       <flux:form id="sectionobjectasgrid" options="{static: 1}" extensionName="FluidTYPO3.TestProviderExtension">
  *           <flux:form.sheet name="options">
  *               <flux:form.section name="columns">
  *                   <flux:form.object name="column" label="Column">
@@ -60,13 +61,11 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
  */
 class ColumnPositionViewHelper extends AbstractFormViewHelper
 {
-    /**
-     * @param RenderingContextInterface $renderingContext
-     * @param array $arguments
-     * @return ColumnPosition
-     */
-    public static function getComponent(RenderingContextInterface $renderingContext, array $arguments)
-    {
-        return static::getContainerFromRenderingContext($renderingContext)->createField(ColumnPosition::class, ColumnPosition::FIELD_NAME);
+    public static function getComponent(
+        RenderingContextInterface $renderingContext,
+        iterable $arguments
+    ): ColumnPosition {
+        return static::getContainerFromRenderingContext($renderingContext)
+            ->createField(ColumnPosition::class, ColumnPosition::FIELD_NAME);
     }
 }

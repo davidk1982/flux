@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\Form\Wizard;
 
 /*
@@ -21,26 +22,8 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
  */
 class Suggest extends AbstractWizard
 {
-
-    /**
-     * @var string
-     */
-    protected $name = 'suggest';
-
-    /**
-     * @var string
-     */
-    protected $type = 'suggest';
-
-    /**
-     * @var string
-     */
-    protected $icon = null;
-
-    /**
-     * @var array
-     */
-    protected $module = null;
+    protected ?string $name = 'suggest';
+    protected ?string $type = 'suggest';
 
     /**
      * @var string
@@ -98,10 +81,7 @@ class Suggest extends AbstractWizard
      */
     protected $renderFunction = '';
 
-    /**
-     * @return array
-     */
-    public function buildConfiguration()
+    public function buildConfiguration(): array
     {
         $table = $this->getTable();
         $configuration = [
@@ -120,15 +100,6 @@ class Suggest extends AbstractWizard
             ],
         ];
         return $configuration;
-    }
-
-    /**
-     * @return string
-     */
-    public function getName()
-    {
-        $name = $this->name;
-        return $name;
     }
 
     /**
@@ -276,13 +247,13 @@ class Suggest extends AbstractWizard
     }
 
     /**
-     * @param array $storagePageUids
+     * @param array|string|null $storagePageUids
      * @return Suggest
      */
     public function setStoragePageUids($storagePageUids)
     {
         if (false === is_array($storagePageUids)) {
-            $this->storagePageUids = GeneralUtility::trimExplode(',', $storagePageUids);
+            $this->storagePageUids = GeneralUtility::trimExplode(',', (string) $storagePageUids);
         } else {
             $this->storagePageUids = $storagePageUids;
         }

@@ -8,14 +8,12 @@ namespace FluidTYPO3\Flux\Outlet\Pipe;
  * LICENSE.md file that was distributed with this source code.
  */
 
-use FluidTYPO3\Flux\Form\Field\Input;
-use FluidTYPO3\Flux\Form\Field\Select;
-use FluidTYPO3\Flux\Form\FieldInterface;
 use FluidTYPO3\Flux\Utility\ExtensionNamingUtility;
+use FluidTYPO3\Flux\Utility\RequestBuilder;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Extbase\Mvc\Dispatcher;
-use TYPO3\CMS\Extbase\Mvc\Web\Request;
-use TYPO3\CMS\Extbase\Mvc\Web\Response;
-use TYPO3\CMS\Extbase\Object\ObjectManagerInterface;
+use TYPO3\CMS\Extbase\Mvc\RequestInterface;
+use TYPO3\CMS\Extbase\Mvc\Response;
 
 /**
  * Pipe: Controller Action
@@ -24,86 +22,39 @@ use TYPO3\CMS\Extbase\Object\ObjectManagerInterface;
  */
 class ControllerPipe extends AbstractPipe implements PipeInterface
 {
+    protected string $controller = '';
+    protected string $action = '';
+    protected string $extensionName = '';
 
-    /**
-     * @var ObjectManagerInterface
-     */
-    protected $objectManager;
-
-    /**
-     * @var string
-     */
-    protected $controller;
-
-    /**
-     * @var string
-     */
-    protected $action;
-
-    /**
-     * @var string
-     */
-    protected $extensionName;
-
-    /**
-     * @param ObjectManagerInterface $objectManager
-     * @return void
-     */
-    public function injectObjectManager(ObjectManagerInterface $objectManager)
-    {
-        $this->objectManager = $objectManager;
-    }
-
-    /**
-     * @param string $controller
-     * @return ControllerPipe
-     */
-    public function setController($controller)
+    public function setController(string $controller): self
     {
         $this->controller = $controller;
         return $this;
     }
 
-    /**
-     * @return string
-     */
-    public function getController()
+    public function getController(): string
     {
         return $this->controller;
     }
 
-    /**
-     * @param string $action
-     * @return ControllerPipe
-     */
-    public function setAction($action)
+    public function setAction(string $action): self
     {
         $this->action = $action;
         return $this;
     }
 
-    /**
-     * @return string
-     */
-    public function getAction()
+    public function getAction(): string
     {
         return $this->action;
     }
 
-    /**
-     * @param string $extensionName
-     * @return ControllerPipe
-     */
-    public function setExtensionName($extensionName)
+    public function setExtensionName(string $extensionName): self
     {
         $this->extensionName = $extensionName;
         return $this;
     }
 
-    /**
-     * @return string
-     */
-    public function getExtensionName()
+    public function getExtensionName(): string
     {
         return $this->extensionName;
     }
@@ -115,21 +66,23 @@ class ControllerPipe extends AbstractPipe implements PipeInterface
     public function conduct($data)
     {
         $extensionName = $this->getExtensionName();
-        /** @var $request Request */
-        $request = $this->objectManager->get(Request::class);
-        $request->setControllerName($this->getController());
-        $request->setControllerActionName($this->getAction());
-        list($vendorName, $extensionName) = ExtensionNamingUtility::getVendorNameAndExtensionName($extensionName);
-        $request->setControllerExtensionName($extensionName);
-        if (null !== $vendorName) {
-            $request->setControllerVendorName($vendorName);
-        }
+        $extensionName = ExtensionNamingUtility::getExtensionName($extensionName);
 
-        $request->setArguments($data);
-        /** @var $response Response */
-        $response = $this->objectManager->get(Response::class);
-        /** @var $dispatcher Dispatcher */
-        $dispatcher = $this->objectManager->get(Dispatcher::class);
+        /** @var RequestBuilder $requestBuilder */
+        $requestBuilder = GeneralUtility::makeInstance(RequestBuilder::class);
+        $request = $requestBuilder->buildRequestFor(
+            $extensionName,
+            $this->getController(),
+            $this->getAction(),
+            '',
+            $data
+        );
+
+        /** @var Response $response */
+        $response = GeneralUtility::makeInstance(Response::class);
+        /** @var Dispatcher $dispatcher */
+        $dispatcher = GeneralUtility::makeInstance(Dispatcher::class);
+        /** @var RequestInterface $request */
         $dispatcher->dispatch($request, $response);
         return $response->getContent();
     }

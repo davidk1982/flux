@@ -11,6 +11,8 @@ namespace FluidTYPO3\Flux\Integration;
 use FluidTYPO3\Flux\Controller\AbstractFluxController;
 use FluidTYPO3\Flux\Form;
 use FluidTYPO3\Flux\Hooks\HookHandler;
+use FluidTYPO3\Flux\Provider\Interfaces\BasicProviderInterface;
+use FluidTYPO3\Flux\Provider\Interfaces\ContentTypeProviderInterface;
 use FluidTYPO3\Flux\Provider\Interfaces\ControllerProviderInterface;
 use FluidTYPO3\Flux\Provider\Interfaces\FluidProviderInterface;
 use FluidTYPO3\Flux\Provider\Interfaces\RecordProviderInterface;
@@ -22,11 +24,8 @@ use FluidTYPO3\Flux\Utility\MiscellaneousUtility;
 use TYPO3\CMS\Core\Cache\CacheManager;
 use TYPO3\CMS\Core\Cache\Exception\NoSuchCacheException;
 use TYPO3\CMS\Core\Cache\Frontend\FrontendInterface;
-use TYPO3\CMS\Core\Information\Typo3Version;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Core\Utility\VersionNumberUtility;
-use TYPO3\CMS\Extbase\Object\ObjectManager;
 use TYPO3\CMS\Extbase\Utility\ExtensionUtility;
 
 /**
@@ -42,7 +41,7 @@ class ContentTypeBuilder
     /**
      * @param string $providerExtensionName
      * @param string $templateFilename
-     * @param string|null $providerClassName
+     * @param class-string $providerClassName
      * @param string|null $contentType
      * @param string $defaultControllerExtensionName
      * @param string|null $controllerActionName
@@ -51,7 +50,7 @@ class ContentTypeBuilder
     public function configureContentTypeFromTemplateFile(
         string $providerExtensionName,
         string $templateFilename,
-        ?string $providerClassName = Provider::class,
+        string $providerClassName = Provider::class,
         ?string $contentType = null,
         string $defaultControllerExtensionName = 'FluidTYPO3.Flux',
         ?string $controllerActionName = null
@@ -71,26 +70,46 @@ class ContentTypeBuilder
             $pluginName = ucfirst(strtolower($controllerActionName));
         }
 
-        $controllerClassName = str_replace('.', '\\', $defaultControllerExtensionName) . '\\Controller\\' . $controllerName . 'Controller';
-        $localControllerClassName = str_replace('.', '\\', $providerExtensionName) . '\\Controller\\' . $controllerName . 'Controller';
+        $controllerClassName = str_replace(
+            '.',
+            '\\',
+            $defaultControllerExtensionName
+        ) . '\\Controller\\' . $controllerName . 'Controller';
+        $localControllerClassName = str_replace(
+            '.',
+            '\\',
+            $providerExtensionName
+        ) . '\\Controller\\' . $controllerName . 'Controller';
         $extensionSignature = str_replace('_', '', ExtensionNamingUtility::getExtensionKey($providerExtensionName));
-        $fullContentType = $contentType ?: $extensionSignature . '_' . strtolower($pluginName);
+        $fullContentType = $contentType ?: $extensionSignature . '_' . strtolower((string) $pluginName);
         if (!$this->validateContentController($localControllerClassName)) {
             class_alias($controllerClassName, $localControllerClassName);
         }
         $this->configureContentTypeForController($providerExtensionName, $controllerClassName, $controllerActionName);
 
-        /** @var Provider $provider */
-        $provider = GeneralUtility::makeInstance(ObjectManager::class)->get($providerClassName);
-        if (!$provider instanceof RecordProviderInterface
+        /** @var BasicProviderInterface $provider */
+        $provider = GeneralUtility::makeInstance($providerClassName);
+        if (!$provider instanceof BasicProviderInterface
+            || !$provider instanceof RecordProviderInterface
             || !$provider instanceof ControllerProviderInterface
             || !$provider instanceof FluidProviderInterface
+            || !$provider instanceof ContentTypeProviderInterface
         ) {
             throw new \RuntimeException(
                 sprintf(
-                    'The Flux Provider class "%s" must implement at least the following interfaces to work as content type Provider: %s',
+                    'The Flux Provider class "%s" must implement at least the following interfaces to work as '
+                    . 'content type Provider: %s',
                     $providerClassName,
-                    implode(',', [RecordProviderInterface::class, ControllerProviderInterface::class, FluidProviderInterface::class])
+                    implode(
+                        ',',
+                        [
+                            BasicProviderInterface::class,
+                            RecordProviderInterface::class,
+                            ControllerProviderInterface::class,
+                            FluidProviderInterface::class,
+                            ContentTypeProviderInterface::class
+                        ]
+                    )
                 )
             );
         }
@@ -115,19 +134,22 @@ class ContentTypeBuilder
         )['provider'];
     }
 
-    protected function configureContentTypeForController(string $providerExtensionName, string $controllerClassName, string $controllerAction): void
-    {
+    protected function configureContentTypeForController(
+        string $providerExtensionName,
+        string $controllerClassName,
+        string $controllerAction
+    ): void {
         $emulatedPluginName = ucfirst(strtolower($controllerAction));
         $controllerName = $this->getControllerNameForPluginRegistration($controllerClassName);
 
-        // Sanity check: if controller does not implement a custom method matching the template name, default to "render"
+        // Sanity check: if controller does not implement a custom action method matching template, default to "render"
         if (!method_exists($controllerClassName, $controllerAction . 'Action')) {
             $controllerAction = 'render';
         }
 
-        // Configure an actual Extbase plugin. This is required in order to render our new CType - but the controller and View
-        // can be inherited from Flux/Fluidcontent as to reduce the amount of boilerplate that will be required, and to allow
-        // using Flux forms in the template file.
+        // Configure an actual Extbase plugin. This is required in order to render our new CType - but the controller
+        // and View can be inherited from Flux/Fluidcontent as to reduce the amount of boilerplate that will be
+        // required, and to allow using Flux forms in the template file.
         ExtensionUtility::configurePlugin(
             $this->getExtensionIdentityForPluginRegistration($providerExtensionName),
             $emulatedPluginName,
@@ -150,6 +172,7 @@ class ContentTypeBuilder
     ): void {
         $cacheId = 'CType_' . md5($contentType . '__' . $providerExtensionName . '__' . $pluginName);
         $cache = $this->getCache();
+        /** @var Form|null $form */
         $form = $cache->get($cacheId);
         if (!$form) {
             // Provider *must* be able to return a Form without any global configuration or specific content
@@ -167,7 +190,9 @@ class ContentTypeBuilder
                 // errors use the most base Exception class in PHP. So instead we check for a
                 // specific dispatcher in the stack trace and re-throw if not matched.
                 $pitcher = $error->getTrace()[0] ?? false;
-                if ($pitcher && ($pitcher['class'] ?? '') !== 'SplObjectStorage' && ($pitcher['function'] ?? '') !== 'serialize') {
+                if ($pitcher && ($pitcher['class'] ?? '') !== 'SplObjectStorage'
+                    && $pitcher['function'] !== 'serialize'
+                ) {
                     throw $error;
                 }
             }
@@ -178,9 +203,9 @@ class ContentTypeBuilder
 
         // Flush the cache entry that was generated; make sure any TypoScript overrides will take place once
         // all TypoScript is finally loaded.
-        GeneralUtility::makeInstance(CacheManager::class)
-            ->getCache('cache_runtime')
-            ->remove('viewpaths_' . ExtensionNamingUtility::getExtensionKey($providerExtensionName));
+        $this->getRuntimeCache()->remove(
+            'viewpaths_' . ExtensionNamingUtility::getExtensionKey($providerExtensionName)
+        );
     }
 
     protected function addIcon(Form $form, string $contentType): string
@@ -189,7 +214,7 @@ class ContentTypeBuilder
             return $GLOBALS['TCA']['tt_content']['ctrl']['typeicon_classes'][$contentType];
         }
         $icon = MiscellaneousUtility::getIconForTemplate($form);
-        if ($icon !== null) {
+        if (!empty($icon)) {
             if (strpos($icon, 'EXT:') === 0 || $icon[0] !== '/') {
                 $icon = GeneralUtility::getFileAbsFileName($icon);
             }
@@ -197,10 +222,7 @@ class ContentTypeBuilder
         if (!$icon) {
             $icon = ExtensionManagementUtility::extPath('flux', 'Resources/Public/Icons/Extension.svg');
         }
-        $iconIdentifier = MiscellaneousUtility::createIcon(
-            $icon,
-            'content-' . $contentType
-        );
+        $iconIdentifier = $this->createIcon($icon, $contentType);
         $GLOBALS['TCA']['tt_content']['ctrl']['typeicon_classes'][$contentType] = $iconIdentifier;
         return $iconIdentifier;
     }
@@ -220,20 +242,26 @@ class ContentTypeBuilder
     {
         // Icons required solely for use in the "new content element" wizard
         $formId = $form->getId() ?: $contentType;
+        /** @var string|null $group */
         $group = $form->getOption(Form::OPTION_GROUP);
         $groupName = $this->sanitizeString($group ?? 'fluxContent');
-        $extensionName = $form->getExtensionName();
+        $extensionName = $form->getExtensionName() ?? 'FluidTYPO3.Flux';
         $extensionKey = ExtensionNamingUtility::getExtensionKey($extensionName);
 
         $labelSubReference = 'flux.newContentWizard.' . $groupName;
         $labelExtensionKey = $groupName === 'fluxContent' ? 'flux' : $extensionKey;
-        $labelReference = 'LLL:EXT:' . $labelExtensionKey . $form->getLocalLanguageFileRelativePath() . ':' . $labelSubReference;
+        $labelReference = 'LLL:EXT:'
+            . $labelExtensionKey
+            . $form->getLocalLanguageFileRelativePath()
+            . ':'
+            . $labelSubReference;
         $this->initializeNewContentWizardGroup(
             $groupName,
             $labelReference
         );
 
-        // Registration for "new content element" wizard to show our new CType (otherwise, only selectable via "Content type" drop-down)
+        // Registration for "new content element" wizard to show our new CType
+        // (otherwise, only selectable via "Content type" drop-down)
         ExtensionManagementUtility::addPageTSConfig(
             sprintf(
                 'mod.wizards.newContentElement.wizardItems.%s.elements.%s {
@@ -260,18 +288,18 @@ class ContentTypeBuilder
     protected function sanitizeString(string $string): string
     {
         $pattern = '/([^a-z0-9\-]){1,}/i';
-        $replaced = preg_replace($pattern, '_', $string);
+        $replaced = (string) preg_replace($pattern, '_', $string);
         $replaced = trim($replaced, '_');
         return empty($replaced) ? md5($string) : $replaced;
     }
 
     /**
-     * @param string $providerExtensionName
+     * @param string $extensionName
      * @param string $contentType
      * @param Form $form
      * @return void
      */
-    protected function registerExtbasePluginForForm(string $providerExtensionName, string $contentType, Form $form): void
+    protected function registerExtbasePluginForForm(string $extensionName, string $contentType, Form $form): void
     {
         if (!isset($GLOBALS['TCA']['tt_content']['columns']['CType']['config']['items'])) {
             // For whatever reason, TCA is not loaded or is loaded in an incomplete state. Attempting to register a
@@ -281,18 +309,12 @@ class ContentTypeBuilder
             return;
         }
 
-        if (version_compare(VersionNumberUtility::getCurrentTypo3Version(), '10.4', '<')) {
-            $contentTypeGroupOption = [$providerExtensionName, '--div--', null, $providerExtensionName];
-            if (array_search($contentTypeGroupOption, $GLOBALS['TCA']['tt_content']['columns']['CType']['config']['items'], true) === false) {
-                $GLOBALS['TCA']['tt_content']['columns']['CType']['config']['items'][] = $contentTypeGroupOption;
-            }
-        }
         ExtensionUtility::registerPlugin(
-            $this->getExtensionIdentityForPluginRegistration($providerExtensionName),
+            $this->getExtensionIdentityForPluginRegistration($extensionName),
             $this->getPluginNamePartFromContentType($contentType),
-            $form->getLabel(),
+            (string) $form->getLabel(),
             MiscellaneousUtility::getIconForTemplate($form),
-            $providerExtensionName
+            $extensionName
         );
     }
 
@@ -303,7 +325,7 @@ class ContentTypeBuilder
             return;
         }
 
-        if (in_array($groupName, ['common', 'menu', 'special', 'forms', 'plugins'])) {
+        if (in_array($groupName, ['common', 'menu', 'special', 'forms', 'plugins'], true)) {
             return;
         }
 
@@ -315,55 +337,62 @@ class ContentTypeBuilder
                     }
                 }',
                 $groupName,
-                'header = ' . $groupLabel ?: 'LLL:EXT:flux/Resources/Private/Language/locallang.xlf:content_types'
+                'header = ' . $groupLabel
             )
         );
         $groups[$groupName] = true;
     }
 
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function getRuntimeCache(): FrontendInterface
+    {
+        /** @var CacheManager $cacheManager */
+        $cacheManager = GeneralUtility::makeInstance(CacheManager::class);
+        return $cacheManager->getCache('runtime');
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
     protected function getCache(): FrontendInterface
     {
+        /** @var CacheManager $cacheManager */
         $cacheManager = GeneralUtility::makeInstance(CacheManager::class);
         try {
             return $cacheManager->getCache('flux');
         } catch (NoSuchCacheException $error) {
-            return $cacheManager->getCache('cache_runtime');
+            return $cacheManager->getCache('runtime');
         }
+    }
+
+    /**
+     * @codeCoverageIgnore
+     */
+    protected function createIcon(string $icon, string $contentType): string
+    {
+        return MiscellaneousUtility::createIcon(
+            $icon,
+            'content-' . $contentType
+        );
     }
 
     private function getExtensionIdentityForPluginRegistration(string $extensionIdentity): string
     {
-        if (version_compare($this->getCoreVersion(), 10.4, '>=')) {
-            if (($dotPosition = strpos($extensionIdentity, '.'))) {
-                $extensionIdentity = substr($extensionIdentity, $dotPosition + 1);
-            }
+        if (($dotPosition = strpos($extensionIdentity, '.'))) {
+            $extensionIdentity = substr($extensionIdentity, $dotPosition + 1);
         }
         return $extensionIdentity;
     }
 
     private function getControllerNameForPluginRegistration(string $controllerClassName): string
     {
-        if (version_compare($this->getCoreVersion(), 10.4, '>=')) {
-            return $controllerClassName;
-        }
-        return substr($controllerClassName, strrpos($controllerClassName, '\\') + 1, -10);
+        return $controllerClassName;
     }
 
     private function getPluginNamePartFromContentType(string $contentType): string
     {
         return GeneralUtility::underscoredToUpperCamelCase(substr($contentType, strpos($contentType, '_') + 1));
-    }
-
-    private function getCoreVersion(): string
-    {
-        static $version;
-        if (!isset($version)) {
-            if (class_exists(Typo3Version::class)) {
-                $version = GeneralUtility::makeInstance(Typo3Version::class)->getVersion();
-            } else {
-                $version = \TYPO3\CMS\Core\Utility\ExtensionManagementUtility::getExtensionVersion('core');
-            }
-        }
-        return $version;
     }
 }

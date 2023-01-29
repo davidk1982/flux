@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\ViewHelpers\Form;
 
 /*
@@ -20,42 +21,35 @@ class OptionViewHelper extends AbstractFormViewHelper
 {
     use CompileWithContentArgumentAndRenderStatic;
 
-    /**
-     * @var string
-     */
-    public static $option;
+    public static string $option = '';
 
-    /**
-     * Initialize arguments
-     * @return void
-     */
-    public function initializeArguments()
+    public function initializeArguments(): void
     {
         $this->registerArgument('value', 'string', 'Option value');
         $this->registerArgument('name', 'string', 'Name of the option to be set', true);
     }
 
-    /**
-     * @param array $arguments
-     * @param \Closure $renderChildrenClosure
-     * @param RenderingContextInterface $renderingContext
-     * @return void
-     */
     public static function renderStatic(
         array $arguments,
         \Closure $renderChildrenClosure,
         RenderingContextInterface $renderingContext
-    ) {
-        $option = isset($arguments['name']) ? $arguments['name'] : static::$option;
+    ): string {
+        $option = $arguments['name'] ?? static::$option;
         $container = static::getContainerFromRenderingContext($renderingContext);
         $value = $renderChildrenClosure();
         if ($container instanceof OptionCarryingInterface) {
             $container->setOption($option, $value);
-            return;
+            return '';
         }
         throw new \UnexpectedValueException(
-            'flux:form.option cannot be used as child element of ' . get_class($container) . ' (this class does not support options). '
-            . 'Please correct this in your template file(s). The option had name="' . $option . '" and value="' . $value . '"',
+            'flux:form.option cannot be used as child element of '
+            . get_class($container)
+            . ' (this class does not support options). '
+            . 'Please correct this in your template file(s). The option had name="'
+            . $option
+            . '" and value="'
+            . $value
+            . '"',
             1602693000
         );
     }

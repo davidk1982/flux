@@ -15,10 +15,9 @@ class ExtensionConfigurationUtility
     public const OPTION_PLUG_AND_PLAY = 'plugAndPlay';
     public const OPTION_PLUG_AND_PLAY_DIRECTORY = 'plugAndPlayDirectory';
     public const OPTION_PAGE_INTEGRATION = 'pageIntegration';
-    public const OPTION_PAGE_LANGUAGE_OVERLAY = 'pagesLanguageConfigurationOverlay';
     public const OPTION_FLEXFORM_TO_IRRE = 'flexFormToIrre';
 
-    protected static $defaults = [
+    protected static array $defaults = [
         self::OPTION_DEBUG_MODE => false,
         self::OPTION_DOKTYPES => '0,1,4',
         self::OPTION_HANDLE_ERRORS => false,
@@ -26,32 +25,35 @@ class ExtensionConfigurationUtility
         self::OPTION_PLUG_AND_PLAY => false,
         self::OPTION_PLUG_AND_PLAY_DIRECTORY => DropInContentTypeDefinition::DESIGN_DIRECTORY,
         self::OPTION_PAGE_INTEGRATION => true,
-        self::OPTION_PAGE_LANGUAGE_OVERLAY => false,
         self::OPTION_FLEXFORM_TO_IRRE => false,
     ];
 
     public static function initialize(?string $extensionConfiguration): void
     {
-        if (empty($GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS'])) {
-            if (class_exists(ExtensionConfiguration::class)) {
-                $GLOBALS['TYPO3_CONF_VARS']['EXTCONF']['flux']['setup'] = GeneralUtility::makeInstance(ExtensionConfiguration::class)->get('flux');
-            } elseif (is_string($extensionConfiguration)) {
-                $GLOBALS['TYPO3_CONF_VARS']['EXTCONF']['flux']['setup'] = $GLOBALS['TYPO3_CONF_VARS']['EXTCONF']['flux']['setup'] ?? unserialize($extensionConfiguration);
-            }
+        $currentConfiguration = &$GLOBALS['TYPO3_CONF_VARS']['EXTCONF']['flux'];
+        $currentConfiguration['hooks'] = $currentConfiguration['hooks'] ?? [];
 
-            $GLOBALS['TYPO3_CONF_VARS']['EXTCONF']['flux']['hooks'] ??= [];
-        } else {
-            $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['flux']['hooks'] ??= [];
+        if (empty($GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS'])) {
+            $legacyConfiguration = &$GLOBALS['TYPO3_CONF_VARS']['EXTCONF']['flux']['setup'];
+            /** @var ExtensionConfiguration $extensionConfigurationManager */
+            $extensionConfigurationManager = GeneralUtility::makeInstance(ExtensionConfiguration::class);
+            $legacyConfiguration = $extensionConfigurationManager->get('flux');
         }
     }
 
     public static function getOptions(): array
     {
-        return ($GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS'] ?? $GLOBALS['TYPO3_CONF_VARS']['EXTCONF'])['flux'];
+        return ($GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS'] ?? $GLOBALS['TYPO3_CONF_VARS']['EXTCONF'])['flux'] ?? [];
     }
 
+    /**
+     * @return mixed|null
+     */
     public static function getOption(string $optionName)
     {
-        return ($GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS'] ?? $GLOBALS['TYPO3_CONF_VARS']['EXTCONF'])['flux']['setup'][$optionName] ?? static::$defaults[$optionName] ?? null;
+        return $GLOBALS['TYPO3_CONF_VARS']['EXTCONF']['flux']['setup'][$optionName]
+            ?? $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['flux'][$optionName]
+            ?? static::$defaults[$optionName]
+            ?? null;
     }
 }

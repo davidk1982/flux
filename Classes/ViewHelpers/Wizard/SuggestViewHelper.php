@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace FluidTYPO3\Flux\ViewHelpers\Wizard;
 
 /*
@@ -22,12 +23,7 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
  */
 class SuggestViewHelper extends AbstractWizardViewHelper
 {
-
-    /**
-     * Initialize arguments
-     * @return void
-     */
-    public function initializeArguments()
+    public function initializeArguments(): void
     {
         parent::initializeArguments();
         $this->registerArgument(
@@ -82,15 +78,11 @@ class SuggestViewHelper extends AbstractWizardViewHelper
         );
     }
 
-    /**
-     * @param RenderingContextInterface $renderingContext
-     * @param iterable $arguments
-     * @return Suggest
-     */
-    public static function getComponent(RenderingContextInterface $renderingContext, iterable $arguments)
+    public static function getComponent(RenderingContextInterface $renderingContext, iterable $arguments): Suggest
     {
+        /** @var array $arguments */
         /** @var Suggest $component */
-        $component = static::getPreparedComponent('Suggest', $renderingContext, $arguments);
+        $component = static::getPreparedComponent(Suggest::class, $renderingContext, $arguments);
         $component->setTable($arguments['table']);
         $component->setStoragePageUids($arguments['pidList']);
         $component->setStoragePageRecursiveDepth($arguments['pidDepth']);
